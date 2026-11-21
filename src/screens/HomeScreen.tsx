@@ -81,7 +81,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
       id: 'products' as ScreenId,
       title: 'مخزن المنتجات',
       subtitle: `${stats.totalProducts} صنف مسجل`,
-      image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=700&q=80',
       icon: Boxes,
       isFullWidth: true,
     },
@@ -89,48 +90,54 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
       id: 'purchase' as ScreenId,
       title: 'المشتريات',
       subtitle: 'توريد بضاعة للمخزن',
-      image: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=700&q=80',
       icon: ShoppingCart,
     },
     {
       id: 'sale' as ScreenId,
       title: 'المبيعات',
       subtitle: 'فاتورة بيع سريعة',
-      image: 'https://images.unsplash.com/photo-1556740758-90de374c12ad?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1556740758-90de374c12ad?auto=format&fit=crop&w=700&q=80',
       icon: TrendingUp,
     },
     {
       id: 'customers' as ScreenId,
       title: 'العملاء',
       subtitle: 'دفتر الديون والتحصيل',
-      image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=700&q=80',
       icon: Users,
     },
     {
       id: 'suppliers' as ScreenId,
       title: 'الموردين',
       subtitle: 'حسابات ومستحقات الموردين',
-      image: 'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&w=700&q=80',
       icon: Truck,
     },
     {
       id: 'expenses' as ScreenId,
       title: 'المصروفات',
       subtitle: 'تسجيل مصاريف المحل',
-      image: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=700&q=80',
       icon: CreditCard,
     },
     {
       id: 'accounts' as ScreenId,
-      title: 'ادارة الحسابات',
+      title: 'إدارة الحسابات',
       subtitle: 'التقارير والأرباح والجرد',
-      image: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=700&q=80',
+      image:
+        'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=700&q=80',
       icon: FileSpreadsheet,
     },
   ];
 
   return (
-    <div dir="rtl" className="space-y-2.5 sm:space-y-3.5 text-right">
+    <div dir="rtl" className="space-y-4 text-right">
       {/* Top Instant Price & Stock Lookup Bar */}
       <div className="relative">
         <form onSubmit={handleSearchSubmit} className="relative">
@@ -139,14 +146,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="ابحث عن منتج أو باركود لمعرفة السعر..."
-            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3.5 pr-9 pl-8 text-xs sm:text-sm font-semibold text-slate-800 text-right focus:border-[#1e4663] focus:outline-hidden shadow-2xs transition"
+            className="app-input pr-10 pl-10 bg-[var(--bg-surface)]"
           />
-          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#1e4663]" />
+          <Search className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--brand-primary)]" />
           {search.trim() !== '' && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="absolute left-2 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] cursor-pointer"
+              aria-label="مسح البحث"
             >
               <X className="h-4 w-4" />
             </button>
@@ -155,34 +163,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
 
         {/* Live Price & Stock Checker Results */}
         {search.trim() !== '' && (
-          <div className="absolute inset-x-0 top-full mt-1.5 z-30 rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
-            <div className="bg-[#1e4663] text-white px-3 py-1.5 text-[11px] font-bold flex items-center justify-between">
+          <div className="absolute inset-x-0 top-full mt-2 z-30 app-card shadow-2xl overflow-hidden">
+            <div className="bg-[var(--brand-primary)] text-white px-4 py-2 text-[13px] font-bold flex items-center justify-between">
               <span>كاشف السعر والرصيد السريع</span>
-              <span>النتائج: {quickResults.length}</span>
+              <span className="app-num">النتائج: {quickResults.length}</span>
             </div>
             {quickResults.length === 0 ? (
-              <div className="p-3.5 text-center text-xs font-bold text-slate-400">
+              <div className="p-5 text-center text-[15px] font-semibold text-[var(--text-muted)]">
                 لا يوجد منتج مطابق لـ &quot;{search}&quot;
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+              <div className="divide-y divide-[var(--border-default)] max-h-72 overflow-y-auto">
                 {quickResults.map((p) => (
                   <div
                     key={p.id}
-                    className="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 transition"
+                    className="p-3.5 flex items-center justify-between gap-3 hover:bg-[var(--bg-hover)] transition-colors"
                   >
                     <div className="min-w-0">
-                      <div className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">{p.name}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                      <div className="font-bold text-[var(--text-primary)] text-[16px] truncate">
+                        {p.name}
+                      </div>
+                      <div className="text-[13px] text-[var(--text-secondary)] mt-0.5 flex items-center gap-2">
                         <span className="truncate">{p.category || 'عام'}</span>
                         <span aria-hidden="true">·</span>
                         <span
-                          className={`font-bold shrink-0 ${
+                          className={`font-bold shrink-0 app-num ${
                             p.qty <= 0
-                              ? 'text-[#b91c1c]'
+                              ? 'text-[var(--color-danger)]'
                               : p.qty <= 5
-                              ? 'text-amber-700'
-                              : 'text-emerald-700'
+                              ? 'text-[var(--color-warning)]'
+                              : 'text-[var(--color-success)]'
                           }`}
                         >
                           الرصيد: {p.qty}
@@ -190,17 +200,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-3 shrink-0">
                       <div className="text-left">
-                        <span className="text-[10px] text-slate-400 block">سعر البيع</span>
-                        <span className="font-black font-mono text-sm text-[#1e4663]">
+                        <span className="text-[12px] text-[var(--text-muted)] block">سعر البيع</span>
+                        <span className="font-extrabold app-num text-[16px] text-[var(--brand-soft-text)]">
                           {p.sell_price.toFixed(0)} {settings.currency}
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={() => onNavigate('sale')}
-                        className="rounded-xl bg-[#0d9488] hover:bg-teal-700 text-white px-2.5 py-1.5 text-xs font-bold transition cursor-pointer"
+                        className="app-btn-primary min-h-[40px] px-3.5 py-1.5 text-[14px]"
                       >
                         بيع
                       </button>
@@ -213,78 +223,87 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
         )}
       </div>
 
-      {/* Quick Business KPI Summary Row (4 compact cards suited for phone screens) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-right">
-        <div
+      {/* Quick Business KPI Summary Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-right">
+        <button
+          type="button"
           onClick={() => onNavigate('invoices_sale')}
-          className="cursor-pointer bg-white rounded-xl p-2.5 border border-slate-200/90 shadow-2xs hover:border-[#1e4663] transition"
+          className="app-card p-3.5 text-right hover:border-[var(--brand-primary)] transition-colors cursor-pointer"
         >
-          <span className="text-slate-500 font-semibold block text-[10px] sm:text-[11px] truncate">
+          <span className="text-[var(--text-secondary)] font-semibold block text-[13px] truncate">
             مبيعات اليوم ({stats.salesCount})
           </span>
-          <span className="font-black font-mono text-[#1e4663] text-xs sm:text-sm mt-0.5 block truncate">
+          <span className="font-extrabold app-num text-[var(--brand-soft-text)] text-[18px] mt-1 block truncate">
             {stats.todaySales.toFixed(0)} {settings.currency}
           </span>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('customers')}
-          className="cursor-pointer bg-white rounded-xl p-2.5 border border-slate-200/90 shadow-2xs hover:border-[#b91c1c] transition"
+          className="app-card p-3.5 text-right hover:border-[var(--color-danger)] transition-colors cursor-pointer"
         >
-          <span className="text-slate-500 font-semibold block text-[10px] sm:text-[11px] truncate">
+          <span className="text-[var(--text-secondary)] font-semibold block text-[13px] truncate">
             ديون لنا عند العملاء
           </span>
           <span
-            className={`font-black font-mono text-xs sm:text-sm mt-0.5 block truncate ${
-              stats.totalCustomerDebt > 0 ? 'text-[#b91c1c]' : 'text-emerald-700'
+            className={`font-extrabold app-num text-[18px] mt-1 block truncate ${
+              stats.totalCustomerDebt > 0
+                ? 'text-[var(--color-danger)]'
+                : 'text-[var(--color-success)]'
             }`}
           >
             {stats.totalCustomerDebt.toFixed(0)} {settings.currency}
           </span>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('products')}
-          className="cursor-pointer bg-white rounded-xl p-2.5 border border-slate-200/90 shadow-2xs hover:border-[#0d9488] transition"
+          className="app-card p-3.5 text-right hover:border-[var(--brand-primary)] transition-colors cursor-pointer"
         >
-          <span className="text-slate-500 font-semibold block text-[10px] sm:text-[11px] truncate">
+          <span className="text-[var(--text-secondary)] font-semibold block text-[13px] truncate">
             أصناف المخزن
           </span>
-          <span className="font-black font-mono text-slate-900 text-xs sm:text-sm mt-0.5 block truncate">
+          <span className="font-extrabold app-num text-[var(--text-primary)] text-[18px] mt-1 block truncate">
             {stats.totalProducts} صنف
           </span>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('accounts')}
-          className="cursor-pointer bg-white rounded-xl p-2.5 border border-slate-200/90 shadow-2xs hover:border-amber-600 transition"
+          className="app-card p-3.5 text-right hover:border-[var(--color-warning)] transition-colors cursor-pointer"
         >
-          <span className="text-slate-500 font-semibold block text-[10px] sm:text-[11px] truncate">
+          <span className="text-[var(--text-secondary)] font-semibold block text-[13px] truncate">
             النواقص والمنتهي
           </span>
           <span
-            className={`font-black font-mono text-xs sm:text-sm mt-0.5 flex items-center gap-1 truncate ${
-              stats.lowStockCount > 0 ? 'text-amber-700' : 'text-emerald-700'
+            className={`font-extrabold app-num text-[18px] mt-1 flex items-center gap-1.5 truncate ${
+              stats.lowStockCount > 0 ? 'text-[var(--color-warning)]' : 'text-[var(--color-success)]'
             }`}
           >
-            {stats.lowStockCount > 0 && <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />}
+            {stats.lowStockCount > 0 && (
+              <AlertTriangle className="h-4 w-4 text-[var(--color-warning)] shrink-0" />
+            )}
             <span>{stats.lowStockCount} صنف</span>
           </span>
-        </div>
+        </button>
       </div>
 
-      {/* Main Grid ordered Right-to-Left */}
-      <div className="grid grid-cols-2 gap-2.5" dir="rtl">
+      {/* Main Navigation Cards Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3" dir="rtl">
         {cards.map((card) => {
+          const Icon = card.icon;
           return (
             <div
               key={card.id}
               onClick={() => onNavigate(card.id)}
-              className={`group relative overflow-hidden rounded-2xl bg-[#0f2435] cursor-pointer shadow-xs hover:shadow-md transition-all active:scale-98 border border-slate-200/80 ${
-                card.isFullWidth ? 'col-span-2 h-28 sm:h-36' : 'h-24 sm:h-32'
+              className={`group relative overflow-hidden rounded-2xl bg-[#0f2435] cursor-pointer shadow-xs hover:shadow-md transition-all active:scale-98 border border-[var(--border-default)] ${
+                card.isFullWidth ? 'col-span-2 lg:col-span-3 h-32 sm:h-40' : 'h-28 sm:h-36'
               }`}
             >
-              {/* Background Image with harmonized navy overlay & clean offline fallback */}
+              {/* Background Image with clean navy overlay & offline fallback */}
               <img
                 src={card.image}
                 alt={card.title}
@@ -294,14 +313,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                 className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0f2435]/85 via-[#1e4663]/20 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0d1626]/90 via-[#0d1626]/35 to-transparent" />
+
+              <div className="absolute top-2.5 left-2.5 h-9 w-9 rounded-xl bg-white/15 backdrop-blur-xs border border-white/20 flex items-center justify-center text-white">
+                <Icon className="h-5 w-5" />
+              </div>
 
               {/* Title Label on bottom right */}
-              <div className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 rounded-xl bg-[#1e4663]/95 backdrop-blur-xs px-2.5 py-1 sm:px-3 sm:py-1.5 text-white shadow-md border border-white/15 transition-transform group-hover:scale-105">
-                <span className="text-xs sm:text-sm font-extrabold tracking-wide block leading-snug">
+              <div className="absolute bottom-2.5 right-2.5 rounded-xl bg-[#0d1626]/90 backdrop-blur-xs px-3 py-1.5 text-white shadow-md border border-white/15 transition-transform group-hover:scale-105">
+                <span className="text-[15px] sm:text-[17px] font-extrabold tracking-wide block leading-snug">
                   {card.title}
                 </span>
-                <span className="text-[9px] sm:text-[10px] text-slate-200 font-medium block leading-tight">
+                <span className="text-[12px] text-slate-200 font-medium block leading-tight">
                   {card.subtitle}
                 </span>
               </div>

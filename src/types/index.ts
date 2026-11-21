@@ -50,6 +50,8 @@ export interface Invoice {
   currency?: string;
   invoice_number?: string;
   idempotencyKey?: string;
+  notes?: string;
+  original_invoice_id?: number;
 }
 
 export interface Payment {
@@ -101,13 +103,20 @@ export interface StoreSettings {
   taxRate: number; // percentage, e.g. 0 or 15
   receiptFooter: string;
   googleDriveLinked?: boolean;
+  driveAccountEmail?: string;
+  driveLastBackupAt?: string;
   userEmail?: string;
+  firebaseLinked?: boolean;
+  firebaseAccountEmail?: string;
+  firebaseLastSyncAt?: string;
+  firebaseProjectId?: string;
   fontFamily?: string;
   fontSize?: number; // root font size in px (default 16)
   productsFontSize?: number; // products list font size in px (default 15)
   theme?: 'light' | 'dark';
   permissionsGranted?: boolean;
   backupCustomFolder?: string;
+  userRole?: 'owner' | 'admin' | 'manager' | 'cashier';
 }
 
 export type ScreenId =
@@ -125,4 +134,5 @@ export type ScreenId =
   | 'invoices_quote'
   | 'accounts'
   | 'expenses'
+  | 'settings'
   | 'backup';

@@ -18,6 +18,7 @@ export interface CreateInvoiceParams {
   date?: string;
   customInvoiceNumber?: string;
   idempotencyKey?: string;
+  originalInvoiceId?: number;
 }
 
 export interface CreateInvoiceResult {
@@ -32,6 +33,31 @@ export interface VoidInvoiceResult {
   alreadyVoided?: boolean;
   stockChanges: { productId: number; oldQty: number; newQty: number }[];
   conflicts: { productId: number; conflictType: string; expectedDelta: number; actualJournalDelta: number | null }[];
+}
+
+export interface EditEligibilityResult {
+  canEdit: boolean;
+  reason?: string;
+  invoice?: StorageInvoice;
+}
+
+export interface UpdateInvoiceParams {
+  invoiceId: number;
+  partyId?: number | null;
+  items: Omit<StorageInvoiceItem, 'id' | 'invoice_id' | 'uuid' | 'updatedAt'>[];
+  discount: number;
+  paid: number;
+  currency?: string;
+  notes?: string;
+  editIdempotencyKey?: string;
+  actorRole?: 'owner' | 'admin' | 'manager' | 'cashier';
+}
+
+export interface UpdateInvoiceResult {
+  invoice: StorageInvoice;
+  items: StorageInvoiceItem[];
+  deduplicated?: boolean;
+  stockChanges: { productId: number; oldQty: number; newQty: number; delta: number }[];
 }
 
 function parseInvoiceSeqNumber(invoiceNumber?: string): number {
@@ -92,6 +118,7 @@ export class InvoiceRepository {
       date,
       customInvoiceNumber,
       idempotencyKey,
+      originalInvoiceId,
     } = params;
 
     const cleanIdempotencyKey = idempotencyKey?.trim() || '';
@@ -212,6 +239,7 @@ export class InvoiceRepository {
           idempotencyKey: resolvedIdempotencyKey,
           uuid: generateUUID(),
           notes: notes?.trim(),
+          original_invoice_id: originalInvoiceId,
           updatedAt: now,
           isDeleted: false,
         } as StorageInvoice;
@@ -620,6 +648,433 @@ export class InvoiceRepository {
             newQty,
           })),
           conflicts,
+        };
+      }
+    );
+  }
+
+  private async evaluateEditEligibility(invoiceId: number): Promise<EditEligibilityResult> {
+    const invoice = await this.db.invoices.get(invoiceId);
+    if (!invoice) {
+      return { canEdit: false, reason: 'الفاتورة غير موجودة.' };
+    }
+    if (invoice.isDeleted) {
+      return { canEdit: false, reason: 'لا يمكن تعديل فاتورة ملغاة.', invoice };
+    }
+    if (invoice.type !== 'sale' && invoice.type !== 'purchase') {
+      return {
+        canEdit: false,
+        reason: 'تعديل الفواتير المحفوظة متاح لفواتير البيع والشراء فقط.',
+        invoice,
+      };
+    }
+
+    const escapeRegex = (val: string) => val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const idRegex = new RegExp(`#${invoiceId}(?!\\d)`);
+    const numRegex = invoice.invoice_number
+      ? new RegExp(`(^|[^\\w\\u0600-\\u06FF])${escapeRegex(invoice.invoice_number)}([^\\w\\u0600-\\u06FF]|$)`)
+      : null;
+
+    // 1. Block if any active sale_return references this invoice
+    const returns = await this.db.invoices
+      .filter((inv) => !inv.isDeleted && inv.type === 'sale_return')
+      .toArray();
+    const linkedReturn = returns.find((ret) => {
+      if (ret.original_invoice_id === invoiceId) return true;
+      const notes = ret.notes || '';
+      if (idRegex.test(notes)) return true;
+      if (numRegex && numRegex.test(notes)) return true;
+      return false;
+    });
+    if (linkedReturn) {
+      return {
+        canEdit: false,
+        reason: `لا يمكن تعديل هذه الفاتورة لوجود فاتورة مرتجع مرتبطة بها (${linkedReturn.invoice_number || `#${linkedReturn.id}`}).`,
+        invoice,
+      };
+    }
+
+    // 2. Block if standalone settlement payments were recorded for this party after the invoice or referencing it
+    if (invoice.party_id != null && this.db.payments) {
+      const partyPayments = await this.db.payments
+        .filter((p) => !p.isDeleted && p.party_id === invoice.party_id)
+        .toArray();
+      const blockingPayment = partyPayments.find((p) => {
+        const notes = p.notes || '';
+        if (idRegex.test(notes) || (numRegex && numRegex.test(notes))) {
+          return true;
+        }
+        return Boolean(p.date && invoice.date && p.date > invoice.date);
+      });
+      if (blockingPayment) {
+        return {
+          canEdit: false,
+          reason:
+            'لا يمكن تعديل هذه الفاتورة لوجود سندات قبض/صرف مستقلة مسجلة على حساب الطرف بعد تاريخ الفاتورة.',
+          invoice,
+        };
+      }
+    }
+
+    return { canEdit: true, invoice };
+  }
+
+  async canEditInvoice(invoiceId: number): Promise<EditEligibilityResult> {
+    return this.evaluateEditEligibility(invoiceId);
+  }
+
+  /**
+   * Atomically updates a saved sale or purchase invoice inside a single Dexie 'rw' transaction:
+   * - Preserves invoice id, uuid, invoice_number, date, and type
+   * - Enforces role permission, eligibility guards (voided / linked return / post-invoice settlements), and retry idempotency
+   * - Computes exact product stock deltas and aborts before mutating anything if stock would drop below 0
+   * - Appends Change Journal (update + stock_change) and full before/after audit snapshot
+   */
+  async updateInvoice(params: UpdateInvoiceParams): Promise<UpdateInvoiceResult> {
+    const {
+      invoiceId,
+      partyId,
+      items,
+      discount,
+      paid,
+      currency,
+      notes,
+      editIdempotencyKey,
+      actorRole = 'owner',
+    } = params;
+
+    if (actorRole === 'cashier') {
+      throw new Error('ليس لديك صلاحية لتعديل الفواتير المحفوظة. يرجى مراجعة مدير النظام.');
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('لا يمكن حفظ فاتورة فارغة بدون أصناف.');
+    }
+
+    for (const item of items) {
+      const q = Number(item.qty);
+      const p = Number(item.price);
+      if (!Number.isFinite(q) || q <= 0) {
+        throw new Error(`كمية غير صالحة للصنف "${item.name}". يجب أن تكون أكبر من صفر.`);
+      }
+      if (!Number.isFinite(p) || p < 0) {
+        throw new Error(`سعر غير صالح للصنف "${item.name}".`);
+      }
+    }
+
+    const cleanDiscount = Math.max(0, Number(discount) || 0);
+    const cleanPaid = Math.max(0, Number(paid) || 0);
+    const cleanEditKey = editIdempotencyKey?.trim() || '';
+    const subtotal = items.reduce((sum, item) => sum + Number(item.qty) * Number(item.price), 0);
+    const total = Math.max(0, subtotal - cleanDiscount);
+    const resolvedPartyId = partyId ?? null;
+
+    return this.db.transaction(
+      'rw',
+      [
+        this.db.invoices,
+        this.db.invoice_items,
+        this.db.products,
+        this.db.parties,
+        this.db.payments,
+        this.db.settings,
+        this.db.change_journal,
+        this.db.audit_logs,
+      ],
+      async () => {
+        // 0. Retry idempotency check
+        if (cleanEditKey && this.db.change_journal) {
+          const priorEdit = await this.db.change_journal
+            .where('operationId')
+            .equals(cleanEditKey)
+            .first();
+          if (priorEdit && priorEdit.table === 'invoices' && priorEdit.action === 'update') {
+            const currentInv = await this.db.invoices.get(invoiceId);
+            const currentItems = await this.db.invoice_items
+              .where('invoice_id')
+              .equals(invoiceId)
+              .toArray();
+            if (currentInv) {
+              return {
+                invoice: currentInv,
+                items: currentItems,
+                deduplicated: true,
+                stockChanges: [],
+              };
+            }
+          }
+        }
+
+        // 1. Validate edit eligibility inside the rw transaction
+        const eligibility = await this.evaluateEditEligibility(invoiceId);
+        if (!eligibility.canEdit || !eligibility.invoice) {
+          throw new Error(eligibility.reason || 'تعذر تعديل هذه الفاتورة.');
+        }
+        const existingInvoice = eligibility.invoice;
+
+        // 2. Validate credit party requirement
+        if (cleanPaid < total && !resolvedPartyId) {
+          throw new Error(
+            existingInvoice.type === 'sale'
+              ? 'اختر العميل لتسجيل المبلغ المتبقي عليه كدين'
+              : 'اختر المورد لتسجيل المبلغ المتبقي له كمستحق'
+          );
+        }
+
+        let partyName: string | undefined;
+        if (resolvedPartyId) {
+          const party = await this.db.parties.get(resolvedPartyId);
+          if (!party || party.isDeleted) {
+            throw new Error('جهة التعامل المحددة غير موجودة.');
+          }
+          partyName = party.name;
+        } else if (existingInvoice.type === 'sale') {
+          partyName = 'مفرد';
+        }
+
+        const oldItems = await this.db.invoice_items
+          .where('invoice_id')
+          .equals(invoiceId)
+          .toArray();
+
+        // 3. Aggregate old vs new quantities per product
+        const oldQtyByProduct = new Map<number, number>();
+        for (const oldIt of oldItems) {
+          oldQtyByProduct.set(
+            oldIt.product_id,
+            (oldQtyByProduct.get(oldIt.product_id) || 0) + (Number(oldIt.qty) || 0)
+          );
+        }
+
+        const oldItemIds = new Set(oldItems.map((it) => it.id).filter(Boolean));
+        const newEffectiveQtyByProduct = new Map<number, { effectiveQty: number; name: string }>();
+        const newItemPricesByProduct = new Map<number, { price: number; sell_price?: number }>();
+
+        for (const newIt of items) {
+          const rawQty = Number(newIt.qty);
+          const isPreExistingRow = Boolean((newIt as any).id && oldItemIds.has((newIt as any).id));
+          const alreadyAddedQty =
+            existingInvoice.type === 'purchase' &&
+            !isPreExistingRow &&
+            newIt.stockAlreadyAdded
+              ? Number(newIt.initialAddedQty) || 0
+              : 0;
+          const effectiveQty = rawQty - alreadyAddedQty;
+          const prev = newEffectiveQtyByProduct.get(newIt.product_id);
+          if (prev) {
+            prev.effectiveQty += effectiveQty;
+          } else {
+            newEffectiveQtyByProduct.set(newIt.product_id, {
+              effectiveQty,
+              name: newIt.name,
+            });
+          }
+          newItemPricesByProduct.set(newIt.product_id, {
+            price: Number(newIt.price),
+            sell_price:
+              newIt.sell_price !== undefined && Number(newIt.sell_price) > 0
+                ? Number(newIt.sell_price)
+                : undefined,
+          });
+        }
+
+        // 4. Compute and validate all stock deltas BEFORE mutating any table
+        const allProductIds = new Set<number>([
+          ...oldQtyByProduct.keys(),
+          ...newEffectiveQtyByProduct.keys(),
+        ]);
+
+        const pendingProductUpdates: {
+          productId: number;
+          productUuid: string;
+          oldQty: number;
+          newQty: number;
+          delta: number;
+          newBuyPrice: number;
+          newSellPrice: number;
+          currentVersion: number;
+        }[] = [];
+
+        for (const productId of allProductIds) {
+          const oldQtyInInv = oldQtyByProduct.get(productId) || 0;
+          const newEntry = newEffectiveQtyByProduct.get(productId);
+          const newQtyInInv = newEntry ? newEntry.effectiveQty : 0;
+
+          const stockDelta =
+            existingInvoice.type === 'sale'
+              ? oldQtyInInv - newQtyInInv
+              : newQtyInInv - oldQtyInInv;
+
+          const product = await this.db.products.get(productId);
+          if (!product) {
+            throw new Error(
+              `المنتج "${newEntry?.name || productId}" غير موجود في المخزن.`
+            );
+          }
+          if (newEntry && product.isDeleted) {
+            throw new Error(`المنتج "${product.name}" محذوف ولا يمكن تضمينه في الفاتورة.`);
+          }
+
+          const currentStock = Number(product.qty) || 0;
+          const nextStock = currentStock + stockDelta;
+          if (nextStock < 0) {
+            throw new InsufficientStockError(
+              product.id,
+              product.name,
+              Math.abs(stockDelta),
+              currentStock
+            );
+          }
+
+          let nextBuyPrice = product.buy_price;
+          let nextSellPrice = product.sell_price;
+          if (existingInvoice.type === 'purchase' && newItemPricesByProduct.has(productId)) {
+            const pInfo = newItemPricesByProduct.get(productId)!;
+            nextBuyPrice = pInfo.price;
+            if (pInfo.sell_price !== undefined) {
+              nextSellPrice = pInfo.sell_price;
+            }
+          }
+
+          const priceChanged =
+            nextBuyPrice !== product.buy_price || nextSellPrice !== product.sell_price;
+          if (stockDelta !== 0 || priceChanged) {
+            pendingProductUpdates.push({
+              productId: product.id,
+              productUuid: product.uuid,
+              oldQty: currentStock,
+              newQty: nextStock,
+              delta: stockDelta,
+              newBuyPrice: nextBuyPrice,
+              newSellPrice: nextSellPrice,
+              currentVersion: product.version || 1,
+            });
+          }
+        }
+
+        const now = new Date().toISOString();
+
+        // 5. Apply atomic product updates
+        for (const pu of pendingProductUpdates) {
+          await this.db.products.update(pu.productId, {
+            qty: pu.newQty,
+            buy_price: pu.newBuyPrice,
+            sell_price: pu.newSellPrice,
+            version: pu.currentVersion + 1,
+            updatedAt: now,
+          });
+        }
+
+        // 6. Replace invoice_items for this invoice atomically
+        await this.db.invoice_items.where('invoice_id').equals(invoiceId).delete();
+        const updatedItems: StorageInvoiceItem[] = [];
+        for (const item of items) {
+          const storageItem: StorageInvoiceItem = {
+            invoice_id: invoiceId,
+            product_id: item.product_id,
+            name: item.name,
+            category: item.category,
+            qty: Number(item.qty),
+            price: Number(item.price),
+            cost: Number(item.cost),
+            sell_price: item.sell_price !== undefined ? Number(item.sell_price) : undefined,
+            image: item.image,
+            stockAlreadyAdded: false,
+            initialAddedQty: 0,
+            uuid: generateUUID(),
+            updatedAt: now,
+          };
+          const itemId = await this.db.invoice_items.add(storageItem);
+          storageItem.id = itemId;
+          updatedItems.push(storageItem);
+        }
+
+        // 7. Update invoice preserving id, uuid, invoice_number, date, type, and idempotencyKey
+        const updatedInvoice: StorageInvoice = {
+          ...existingInvoice,
+          party_id: resolvedPartyId,
+          party_name: partyName,
+          discount: cleanDiscount,
+          total,
+          paid: cleanPaid,
+          currency: currency?.trim() || existingInvoice.currency || 'د.ع',
+          notes: notes !== undefined ? notes.trim() : existingInvoice.notes,
+          updatedAt: now,
+        };
+
+        await this.db.invoices.put(updatedInvoice);
+
+        // 8. Atomic Change Journal & Audit Log
+        const stockChanges = pendingProductUpdates
+          .filter((pu) => pu.delta !== 0)
+          .map((pu) => ({
+            productId: pu.productId,
+            oldQty: pu.oldQty,
+            newQty: pu.newQty,
+            delta: pu.delta,
+          }));
+
+        if (this.db.change_journal) {
+          await this.db.change_journal.add({
+            operationId: cleanEditKey || generateUUID(),
+            table: 'invoices',
+            action: 'update',
+            recordId: invoiceId,
+            recordUuid: existingInvoice.uuid,
+            timestamp: now,
+            beforeState: existingInvoice,
+            afterState: updatedInvoice,
+          });
+
+          for (const pu of pendingProductUpdates) {
+            if (pu.delta === 0) continue;
+            await this.db.change_journal.add({
+              operationId: generateUUID(),
+              table: 'products',
+              action: 'stock_change',
+              recordId: pu.productId,
+              recordUuid: pu.productUuid,
+              timestamp: now,
+              diff: {
+                oldQty: pu.oldQty,
+                newQty: pu.newQty,
+                delta: pu.delta,
+                invoiceId,
+                invoiceUuid: existingInvoice.uuid,
+                invoiceType: existingInvoice.type,
+                reason: 'invoice_edit',
+                editOperationId: cleanEditKey || undefined,
+              },
+            });
+          }
+        }
+
+        if (this.db.audit_logs) {
+          await this.db.audit_logs.add({
+            uuid: generateUUID(),
+            action: 'update',
+            entity: 'invoice',
+            entityId: invoiceId,
+            timestamp: now,
+            details: {
+              editOperationId: cleanEditKey || undefined,
+              invoiceNumber: existingInvoice.invoice_number,
+              invoiceType: existingInvoice.type,
+              actorRole,
+              previousInvoice: existingInvoice,
+              previousItems: oldItems,
+              updatedInvoice,
+              updatedItems,
+              stockChanges,
+            },
+          });
+        }
+
+        return {
+          invoice: updatedInvoice,
+          items: updatedItems,
+          deduplicated: false,
+          stockChanges,
         };
       }
     );

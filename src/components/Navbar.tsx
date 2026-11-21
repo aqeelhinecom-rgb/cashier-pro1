@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Menu,
   ArrowRight,
+  Home,
   Boxes,
   ShoppingCart,
   Users,
@@ -9,11 +10,14 @@ import {
   FileSpreadsheet,
   CreditCard,
   Receipt,
+  RotateCcw,
+  FileText,
   X,
   TrendingUp,
   Sun,
   Moon,
   Settings,
+  Cloud,
   Edit2,
   Check,
 } from 'lucide-react';
@@ -27,6 +31,29 @@ interface NavbarProps {
   onStepBack?: () => void;
   title?: string;
 }
+
+export const MOBILE_NAV_ITEMS: {
+  id: ScreenId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: 'home', label: 'الرئيسية', icon: Home },
+  { id: 'sale', label: 'المبيعات (فاتورة جديدة)', icon: TrendingUp },
+  { id: 'purchase', label: 'المشتريات (توريد)', icon: ShoppingCart },
+  { id: 'sale_return', label: 'فاتورة مرتجع', icon: RotateCcw },
+  { id: 'quote', label: 'عرض سعر', icon: FileText },
+  { id: 'products', label: 'مخزن المنتجات', icon: Boxes },
+  { id: 'customers', label: 'العملاء', icon: Users },
+  { id: 'suppliers', label: 'الموردين', icon: Truck },
+  { id: 'expenses', label: 'المصروفات', icon: CreditCard },
+  { id: 'accounts', label: 'إدارة الحسابات', icon: FileSpreadsheet },
+  { id: 'invoices_sale', label: 'فواتير البيع', icon: Receipt },
+  { id: 'invoices_purchase', label: 'فواتير الشراء', icon: ShoppingCart },
+  { id: 'invoices_return', label: 'فواتير المرتجع', icon: RotateCcw },
+  { id: 'invoices_quote', label: 'عروض الأسعار', icon: FileSpreadsheet },
+  { id: 'settings', label: 'إعدادات المتجر', icon: Settings },
+  { id: 'backup', label: 'النسخ الاحتياطي', icon: Cloud },
+];
 
 export const Navbar: React.FC<NavbarProps> = ({ currentScreen, onNavigate, onStepBack, title }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -55,13 +82,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentScreen, onNavigate, onSte
   };
 
   const startEditingName = () => {
-    setNameDraft(settings.storeName || 'Cashier - إدارة حسابات المحلات');
+    setNameDraft(settings.storeName || 'Cashier Pro');
     setIsEditingName(true);
   };
 
   const saveStoreName = async (e?: React.MouseEvent | React.FormEvent) => {
     if (e) e.stopPropagation();
-    const trimmed = nameDraft.trim() || 'Cashier - إدارة حسابات المحلات';
+    const trimmed = nameDraft.trim() || 'Cashier Pro';
     try {
       await DB.saveSettings({ storeName: trimmed });
     } catch (err) {
@@ -75,202 +102,194 @@ export const Navbar: React.FC<NavbarProps> = ({ currentScreen, onNavigate, onSte
     setIsEditingName(false);
   };
 
-  const navItems: { id: ScreenId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'home', label: 'الرئيسية', icon: Boxes },
-    { id: 'products', label: 'مخزن المنتجات', icon: Boxes },
-    { id: 'sale', label: 'المبيعات (فاتورة جديدة)', icon: TrendingUp },
-    { id: 'purchase', label: 'المشتريات (توريد)', icon: ShoppingCart },
-    { id: 'customers', label: 'العملاء', icon: Users },
-    { id: 'suppliers', label: 'الموردين', icon: Truck },
-    { id: 'expenses', label: 'المصروفات', icon: CreditCard },
-    { id: 'accounts', label: 'ادارة الحسابات', icon: FileSpreadsheet },
-    { id: 'invoices_sale', label: 'فواتير البيع', icon: Receipt },
-    { id: 'invoices_purchase', label: 'فواتير الشراء', icon: ShoppingCart },
-    { id: 'invoices_return', label: 'فواتير المرتجع', icon: Receipt },
-    { id: 'invoices_quote', label: 'عروض الأسعار', icon: FileSpreadsheet },
-    { id: 'backup', label: 'الإعدادات والنسخ الاحتياطي', icon: Settings },
-  ];
+  const navItems = MOBILE_NAV_ITEMS;
 
   const handleItemClick = (id: ScreenId) => {
     setMenuOpen(false);
     onNavigate(id);
   };
 
+  const displayTitle = title || settings.storeName || 'Cashier Pro';
+
   return (
     <>
       <header
         dir="rtl"
-        className="sticky top-0 z-40 bg-[#1e4663] text-white border-b border-[#16354b] shadow-xs transition-colors"
+        className="shrink-0 z-30 h-14 sm:h-16 bg-[var(--bg-chrome)] text-[var(--text-primary)] border-b border-[var(--border-default)] transition-colors print:hidden"
       >
-        <div className="max-w-lg sm:max-w-2xl mx-auto px-2.5 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2">
-          {currentScreen === 'home' ? (
-            <>
-              {/* Home Header: Menu button on right, Store Name on left */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => setMenuOpen(true)}
-                  className="p-1.5 sm:p-2 rounded-xl text-white hover:bg-white/10 transition"
-                  title="القائمة الرئيسية"
-                >
-                  <Menu className="h-5 w-5 sm:h-6 sm:w-6 stroke-2" />
-                </button>
-              </div>
+        <div className="h-full max-w-6xl mx-auto px-3 sm:px-5 flex items-center justify-between gap-2.5">
+          {/* Right Cluster (RTL start): Mobile Menu Button (all screens) + Back Button on sub-screens + Brand/Page Title */}
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+            {currentScreen !== 'home' && (
+              <button
+                type="button"
+                onClick={() => (onStepBack ? onStepBack() : onNavigate('home'))}
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors shrink-0 cursor-pointer"
+                title="رجوع"
+                aria-label="رجوع"
+              >
+                <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="lg:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors shrink-0 cursor-pointer"
+              title="القائمة الرئيسية"
+              aria-label="القائمة الرئيسية"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
 
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                <button
-                  onClick={toggleTheme}
-                  className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white transition text-xs font-bold shrink-0"
-                  title={isDark ? 'التحويل إلى النمط النهاري' : 'التحويل إلى النمط الليلي'}
-                >
-                  {isDark ? (
-                    <>
-                      <Sun className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-300" />
-                      <span className="hidden sm:inline">نهاري</span>
-                    </>
-                  ) : (
-                    <>
-                      <Moon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-100" />
-                      <span className="hidden sm:inline">ليلي</span>
-                    </>
-                  )}
-                </button>
+            <img
+              src="/app-icon.svg"
+              alt="POS"
+              className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-subtle)] p-0.5 object-contain shrink-0"
+            />
 
-                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                  <img
-                    src="/app-icon.svg"
-                    alt="POS"
-                    className="h-7 w-7 sm:h-8 sm:w-8 rounded-xl shadow-xs border border-white/20 bg-white/10 p-0.5 object-contain shrink-0"
-                  />
-                  <h1
-                    onClick={!isEditingName ? startEditingName : undefined}
-                    title={!isEditingName ? 'اضغط لتغيير الاسم' : undefined}
-                    className={`text-sm sm:text-lg font-black text-white tracking-tight flex items-center gap-1 min-w-0 ${
-                      !isEditingName ? 'cursor-pointer group hover:text-teal-200 transition-colors' : ''
-                    }`}
+            {currentScreen === 'home' ? (
+              <div className="min-w-0 flex-1">
+                {isEditingName ? (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {isEditingName ? (
-                      <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={nameDraft}
-                          onChange={(e) => setNameDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveStoreName(e);
-                            if (e.key === 'Escape') cancelEditingName();
-                          }}
-                          autoFocus
-                          placeholder="اسم المحل..."
-                          className="bg-white/15 text-white placeholder-white/50 border border-white/30 rounded-lg px-2 py-0.5 text-xs sm:text-sm font-black focus:outline-hidden focus:border-teal-300 w-32 sm:w-52"
-                        />
-                        <button
-                          type="button"
-                          onClick={saveStoreName}
-                          className="p-1 rounded-lg bg-emerald-500/80 hover:bg-emerald-500 text-white transition shrink-0"
-                          title="حفظ الاسم"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEditingName}
-                          className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition shrink-0"
-                          title="إلغاء"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </span>
-                    ) : (
-                      <>
-                        <span className="truncate max-w-[165px] sm:max-w-[260px]">
-                          {settings.storeName || 'Cashier - إدارة حسابات المحلات'}
-                        </span>
-                        <Edit2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
-                      </>
-                    )}
-                  </h1>
-                </div>
+                    <input
+                      type="text"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveStoreName(e);
+                        if (e.key === 'Escape') cancelEditingName();
+                      }}
+                      autoFocus
+                      placeholder="اسم المحل..."
+                      className="app-input min-h-[38px] py-1 px-2.5 text-[15px] font-bold max-w-[200px] sm:max-w-[260px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveStoreName}
+                      className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-[var(--color-success)] text-white shrink-0 cursor-pointer"
+                      title="حفظ الاسم"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditingName}
+                      className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] shrink-0 cursor-pointer"
+                      title="إلغاء"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startEditingName}
+                    title="اضغط لتغيير اسم المحل"
+                    className="group flex items-center gap-1.5 min-w-0 text-right cursor-pointer"
+                  >
+                    <h1 className="text-[18px] sm:text-[21px] font-extrabold text-[var(--text-primary)] truncate leading-tight">
+                      {settings.storeName || 'Cashier Pro'}
+                    </h1>
+                    <Edit2 className="h-3.5 w-3.5 text-[var(--text-muted)] group-hover:text-[var(--brand-primary)] transition-colors shrink-0" />
+                  </button>
+                )}
               </div>
-            </>
-          ) : (
-            <>
-              {/* Section Header: Only Back button on right & Section Title on left */}
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => (onStepBack ? onStepBack() : onNavigate('home'))}
-                  className="p-1.5 sm:p-2 rounded-xl text-white hover:bg-white/10 transition flex items-center gap-1"
-                  title="رجوع"
-                >
-                  <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6 stroke-2" />
-                </button>
-              </div>
-
-              <h1 className="text-base sm:text-lg font-extrabold text-white tracking-wide truncate">
-                {title}
+            ) : (
+              <h1 className="text-[18px] sm:text-[21px] font-extrabold text-[var(--text-primary)] truncate leading-tight">
+                {displayTitle}
               </h1>
-            </>
-          )}
+            )}
+          </div>
+
+          {/* Left Cluster (RTL end): Instant Theme Toggle across ALL screens */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="min-h-[40px] px-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] text-[13px] sm:text-[14px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={isDark ? 'التحويل إلى الوضع النهاري' : 'التحويل إلى الوضع الليلي'}
+            >
+              {isDark ? (
+                <>
+                  <Sun className="h-4 w-4 text-amber-400 shrink-0" />
+                  <span className="hidden sm:inline">نهاري</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="h-4 w-4 text-[var(--brand-primary)] shrink-0" />
+                  <span className="hidden sm:inline">ليلي</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Slide-out Sidebar Drawer opening from the RIGHT side in RTL */}
+      {/* Mobile / Tablet Slide-out Drawer */}
       {menuOpen && (
         <div
           dir="rtl"
           onClick={() => setMenuOpen(false)}
-          className="fixed inset-0 z-50 flex justify-start bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex justify-start bg-black/55 backdrop-blur-[2px] lg:hidden"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-64 sm:w-72 bg-white h-full shadow-2xl flex flex-col p-3.5 sm:p-4"
+            className="w-72 sm:w-80 bg-[var(--bg-chrome)] text-[var(--text-primary)] h-full shadow-2xl border-l border-[var(--border-default)] flex flex-col p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border-default)] gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <img
                   src="/app-icon.svg"
                   alt="POS"
-                  className="h-9 w-9 rounded-2xl shadow-sm border border-slate-200 object-contain p-0.5 bg-slate-50 shrink-0"
+                  className="h-10 w-10 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-subtle)] object-contain p-1 shrink-0"
                 />
                 <div className="min-w-0">
-                  <h3 className="font-black text-sm text-[#1e4663] leading-snug truncate">
-                    {settings.storeName || 'Cashier - إدارة حسابات المحلات'}
+                  <h3 className="font-extrabold text-[16px] text-[var(--text-primary)] leading-snug truncate">
+                    {settings.storeName || 'Cashier Pro'}
                   </h3>
-                  <span className="text-[10px] text-teal-700 font-bold bg-teal-50 px-1.5 py-0.5 rounded-md inline-block">
+                  <span className="text-[12px] text-[var(--brand-soft-text)] font-bold bg-[var(--brand-soft)] px-2 py-0.5 rounded-md inline-block mt-0.5">
                     نظام نقاط البيع والمخزن
                   </span>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setMenuOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 shrink-0"
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] shrink-0 cursor-pointer"
+                aria-label="إغلاق القائمة"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-2.5 space-y-1">
+            <div className="app-scroll-region flex-1 py-3 space-y-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentScreen === item.id;
                 return (
                   <button
                     key={item.id}
+                    type="button"
                     onClick={() => handleItemClick(item.id)}
-                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs sm:text-sm font-bold text-right transition ${
+                    className={`w-full min-h-[44px] flex items-center gap-3 px-3 py-2 rounded-xl text-[15px] font-bold text-right transition-colors cursor-pointer ${
                       isActive
-                        ? 'bg-[#1e4663] text-white shadow-xs'
-                        : 'text-slate-700 hover:bg-slate-100'
+                        ? 'bg-[var(--brand-primary)] text-white shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                     }`}
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
+                    <Icon className="h-5 w-5 shrink-0" />
                     <span className="truncate">{item.label}</span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="pt-2.5 border-t border-slate-100 text-center text-[11px] text-slate-400">
-              <p className="font-bold text-slate-700">تطبيق كاشير المحلات</p>
-              <p>العملة: {settings.currency} • الخط: {settings.fontFamily || 'Cairo'}</p>
+            <div className="pt-3 border-t border-[var(--border-default)] text-center text-[13px] text-[var(--text-muted)] space-y-0.5">
+              <p className="font-bold text-[var(--text-primary)]">Cashier Pro</p>
+              <p>العملة: {settings.currency} · الخط: {settings.fontFamily || 'Cairo'}</p>
             </div>
           </div>
         </div>

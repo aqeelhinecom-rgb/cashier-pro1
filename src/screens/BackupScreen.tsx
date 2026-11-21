@@ -1,156 +1,174 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Download,
-  RotateCcw,
   Check,
   AlertTriangle,
   Cloud,
+  CloudCheck,
   CheckCircle2,
-  Type,
-  Sun,
-  Moon,
-  Coins,
-  Store,
-  Minus,
-  Plus,
-  Link2,
-  Unlink,
-  RefreshCw,
-  LogOut,
-  Mail,
-  Edit2,
-  ShieldCheck,
+  RotateCcw,
   Trash2,
   HardDrive,
-  Database,
-  ExternalLink,
   UploadCloud,
-  FolderArchive,
-  FolderOpen,
   Loader2,
+  RefreshCw,
+  Settings,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ShieldCheck,
+  Download,
+  FolderOpen,
+  Unlink,
 } from 'lucide-react';
 import { DB } from '../services/db';
 import { StoreSettings } from '../types';
 import { playSuccessChime } from '../services/audio';
 import {
-  initAuth,
-  signInWithGoogle,
-  signOutGoogle,
+  subscribeGoogleDriveState,
+  getGoogleDriveState,
+  hydrateDriveMetadata,
+  connectGoogleDrive,
+  disconnectGoogleDrive,
   uploadBackupToGoogleDrive,
   listGoogleDriveBackups,
   downloadBackupFromGoogleDrive,
   deleteBackupFromGoogleDrive,
+  verifyBackupOnGoogleDrive,
+  type DriveBackupVerificationResult,
+  type DriveFileItem,
+  type GoogleDriveConnectionState,
+} from '../services/cloud/googleDriveService';
+import {
+  subscribeFirebaseState,
+  getFirebaseState,
+  hydrateFirebaseMetadata,
+  initFirebaseAuth,
+  connectFirebaseWithGoogle,
+  disconnectFirebase,
+  configureTestFirebaseProject,
+  diagnoseFirestoreConnection,
+  runFirestoreTestProjectDiagnostic,
   saveBackupToFirestore,
   listFirestoreBackups,
   loadBackupFromFirestore,
   deleteBackupFromFirestore,
-  type DriveFileItem,
+  type FirebaseConnectionState,
+  type FirebaseTestProjectConfig,
+  type FirestoreDiagnosticResult,
   type FirestoreBackupItem,
-} from '../services/firebase';
+} from '../services/cloud/firebaseCloudService';
 import {
   createSqliteDbBlob,
   universalRestore,
-  generateBackupFileName,
 } from '../services/dbFormat';
 import type { StorageBackupRecord } from '../services/storage/types';
-import type { User } from 'firebase/auth';
+import { AutoBackupView } from '../components/backup/AutoBackupView';
+import { StoreSettingsHub } from '../components/backup/StoreSettingsHub';
 
-const ARABIC_FONTS = [
-  { id: 'Cairo', name: 'خط كايرو (Cairo)', desc: 'عصري وواضح جداً للكاشير' },
-  { id: 'Tajawal', name: 'خط تجول (Tajawal)', desc: 'أنيق وناعم ومريح للعين' },
-  { id: 'Almarai', name: 'خط المراعي (Almarai)', desc: 'رسمي وممتاز لقراءة الفواتير' },
-  { id: 'Readex Pro', name: 'خط ريدكس برو (Readex Pro)', desc: 'هندسي حديث وواضح للأرقام' },
-  { id: 'Changa', name: 'خط تشانغا (Changa)', desc: 'عريض وبارز للعناوين والأسعار' },
-  { id: 'IBM Plex Sans Arabic', name: 'خط آي بي إم (IBM Plex)', desc: 'تقني ودقيق للجداول المحاسبية' },
-  { id: 'Noto Kufi Arabic', name: 'خط نوتو كوفي (Noto Kufi)', desc: 'خط كوفي عربي أصيل ومتناسق' },
-  { id: 'Amiri', name: 'خط أميري (Amiri)', desc: 'خط عربي كلاسيكي فاخر' },
-];
+type BackupScreenView = 'backup' | 'auto_backup' | 'settings';
+type BackupSourceTab = 'drive' | 'local' | 'firebase';
 
-const CURRENCY_PRESETS = [
-  { label: 'دينار عراقي (د.ع)', value: 'د.ع' },
-  { label: 'دينار عراقي (كتابة كاملة)', value: 'دينار عراقي' },
-  { label: 'دولار أمريكي ($)', value: '$' },
-  { label: 'دولار (كتابة كاملة)', value: 'دولار' },
-];
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-export const BackupScreen: React.FC = () => {
+interface BackupScreenProps {
+  initialView?: BackupScreenView;
+  onExitView?: () => void;
+}
+
+export const BackupScreen: React.FC<BackupScreenProps> = ({
+  initialView = 'backup',
+  onExitView,
+}) => {
   const [settings, setSettings] = useState<StoreSettings>(DB.getSettings());
-  const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [driveBackups, setDriveBackups] = useState<DriveFileItem[]>([]);
-  const [firestoreBackups, setFirestoreBackups] = useState<FirestoreBackupItem[]>([]);
-  const [cloudLoading, setCloudLoading] = useState(false);
-  const [activeCloudTab, setActiveCloudTab] = useState<'drive' | 'firestore'>('drive');
-  const [openSection, setOpenSection] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<BackupScreenView>(initialView);
 
-  // Phase 7A: Dexie Historical Backups & Local State
+  useEffect(() => {
+    setActiveView(initialView);
+  }, [initialView]);
+  const [backupSource, setBackupSource] = useState<BackupSourceTab>('drive');
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+
+  const [statusMessage, setStatusMessage] = useState<{
+    text: string;
+    type: 'success' | 'error';
+  } | null>(null);
+
+  // Service 1: Independent Google Drive state
+  const [driveState, setDriveState] = useState<GoogleDriveConnectionState>(() =>
+    getGoogleDriveState()
+  );
+  const [driveBackups, setDriveBackups] = useState<DriveFileItem[]>([]);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveBusyId, setDriveBusyId] = useState<string | null>(null);
+  const [driveVerificationResult, setDriveVerificationResult] =
+    useState<DriveBackupVerificationResult | null>(null);
+
+  // Service 2: Independent Firebase (Auth & Firestore) state
+  const [firebaseState, setFirebaseState] = useState<FirebaseConnectionState>(() =>
+    getFirebaseState()
+  );
+  const [firestoreBackups, setFirestoreBackups] = useState<FirestoreBackupItem[]>([]);
+  const [firebaseLoading, setFirebaseLoading] = useState(false);
+  const [firebaseDiagnostic, setFirebaseDiagnostic] =
+    useState<FirestoreDiagnosticResult | null>(null);
+  const [testProjectForm, setTestProjectForm] = useState<FirebaseTestProjectConfig>({
+    projectId: '',
+    apiKey: '',
+    authDomain: '',
+    appId: '',
+    firestoreDatabaseId: '(default)',
+  });
+
+  // Local Dexie historical backups state
   const [historicalBackups, setHistoricalBackups] = useState<StorageBackupRecord[]>([]);
   const [dexieBackupLoading, setDexieBackupLoading] = useState(false);
-  const dexieFileInputRef = useRef<HTMLInputElement>(null);
+  const [fileLoading, setFileLoading] = useState(false);
 
-  const toggleSection = (id: string) => {
-    setOpenSection((prev) => (prev === id ? null : id));
-  };
+  const dexieFileInputRef = useRef<HTMLInputElement>(null);
+  const sqliteFileInputRef = useRef<HTMLInputElement>(null);
+
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     message: string;
     confirmText: string;
     isDanger?: boolean;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
   } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setStatusMessage({ text, type });
-    setTimeout(() => setStatusMessage(null), 3500);
+    setTimeout(() => setStatusMessage(null), 4500);
   };
 
-  const loadCloudBackups = async (user: User) => {
-    setCloudLoading(true);
+  const loadGoogleDriveBackupsOnly = async () => {
+    setDriveLoading(true);
     try {
-      const [driveList, firestoreList] = await Promise.all([
-        listGoogleDriveBackups(),
-        listFirestoreBackups(user.uid),
-      ]);
-      setDriveBackups(driveList);
-      setFirestoreBackups(firestoreList);
-    } catch (err) {
-      console.error('Error loading cloud backups:', err);
+      const files = await listGoogleDriveBackups();
+      setDriveBackups(files);
+    } catch (err: any) {
+      setDriveBackups([]);
+      showToast(err?.message || 'تعذر جلب نسخ Google Drive', 'error');
     } finally {
-      setCloudLoading(false);
+      setDriveLoading(false);
     }
   };
 
-  useEffect(() => {
-    const unsubAuth = initAuth(
-      (user) => {
-        setCurrentUser(user);
-        if (user) {
-          DB.saveSettings({ googleDriveLinked: true, userEmail: user.email || '' }).catch(console.error);
-          loadCloudBackups(user);
-        } else {
-          setDriveBackups([]);
-          setFirestoreBackups([]);
-        }
-      },
-      () => {
-        setCurrentUser(null);
-        setDriveBackups([]);
-        setFirestoreBackups([]);
-      }
-    );
-
-    const unsubDB = DB.subscribe(() => {
-      setSettings(DB.getSettings());
-    });
-
-    return () => {
-      unsubAuth();
-      unsubDB();
-    };
-  }, []);
+  const loadFirestoreBackupsOnly = async (uid: string) => {
+    if (!uid) {
+      setFirestoreBackups([]);
+      return;
+    }
+    setFirebaseLoading(true);
+    try {
+      const items = await listFirestoreBackups(uid);
+      setFirestoreBackups(items);
+    } catch (err: any) {
+      setFirestoreBackups([]);
+      showToast(err?.message || 'تعذر جلب لقطات Firestore', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
 
   const loadHistoricalBackups = async () => {
     try {
@@ -160,6 +178,56 @@ export const BackupScreen: React.FC = () => {
       console.warn('Failed to load historical backups:', err);
     }
   };
+
+  useEffect(() => {
+    const initialSettings = DB.getSettings();
+    hydrateDriveMetadata({
+      email: initialSettings.driveAccountEmail,
+      lastBackupAt: initialSettings.driveLastBackupAt,
+    });
+    hydrateFirebaseMetadata({
+      lastSyncAt: initialSettings.firebaseLastSyncAt,
+    });
+
+    const unsubDrive = subscribeGoogleDriveState((nextDrive) => {
+      setDriveState(nextDrive);
+    });
+
+    const unsubFirebase = subscribeFirebaseState((nextFb) => {
+      setFirebaseState(nextFb);
+    });
+
+    const unsubAuth = initFirebaseAuth(
+      (user) => {
+        if (user) {
+          DB.saveSettings({
+            firebaseLinked: true,
+            firebaseAccountEmail: user.email || '',
+          }).catch(console.error);
+        } else {
+          setFirestoreBackups([]);
+        }
+      },
+      () => {
+        setFirestoreBackups([]);
+      }
+    );
+
+    const unsubDB = DB.subscribe(() => {
+      setSettings(DB.getSettings());
+    });
+
+    if (getGoogleDriveState().tokenValid) {
+      loadGoogleDriveBackupsOnly();
+    }
+
+    return () => {
+      unsubDrive();
+      unsubFirebase();
+      unsubAuth();
+      unsubDB();
+    };
+  }, []);
 
   useEffect(() => {
     loadHistoricalBackups();
@@ -172,27 +240,35 @@ export const BackupScreen: React.FC = () => {
       .catch((e) => console.warn('Auto backup check:', e));
   }, []);
 
+  // =========================================================================
+  // Local Dexie & File Backup Handlers (Sandbox Verified Before Restore)
+  // =========================================================================
   const handleCreateDexieBackup = async (type: 'manual' | 'daily_auto' = 'manual') => {
     setDexieBackupLoading(true);
     try {
       const res = await DB.createFullBackup(type);
       playSuccessChime();
 
-      // Trigger file download
-      const url = URL.createObjectURL(res.blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = res.fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      if (type === 'manual') {
+        const url = URL.createObjectURL(res.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = res.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
 
-      showToast(`تم إنشاء النسخة الاحتياطية بنجاح (${res.fileName}) - البصمة: ${res.backupRecord.checksum.substring(0, 10)}...`);
+      showToast(
+        type === 'daily_auto'
+          ? 'تم حفظ النسخة التلقائية بنجاح على هذا الجهاز'
+          : 'تم حفظ وتنزيل النسخة الاحتياطية المحلية بنجاح'
+      );
       await loadHistoricalBackups();
     } catch (err: any) {
       console.error(err);
-      showToast(err.message || 'حدث خطأ أثناء إنشاء النسخة الاحتياطية', 'error');
+      showToast(err?.message || 'حدث خطأ أثناء إنشاء النسخة الاحتياطية', 'error');
     } finally {
       setDexieBackupLoading(false);
     }
@@ -205,7 +281,6 @@ export const BackupScreen: React.FC = () => {
     setDexieBackupLoading(true);
     try {
       const text = await file.text();
-      // Sandbox validation gate
       const validation = await DB.validateBackupInSandbox(text);
       if (!validation.valid || !validation.manifest) {
         showToast(validation.error || 'الملف غير صالح أو تالف', 'error');
@@ -214,15 +289,11 @@ export const BackupScreen: React.FC = () => {
 
       const m = validation.manifest;
       setConfirmModal({
-        title: 'تأكيد استرجاع نسخة Dexie الاحتياطية',
-        message: `تم التحقق بنجاح من سلامة الملف في البيئة المعزولة (Sandbox).
-المتجر: ${m.storeName}
-تاريخ النسخة: ${new Date(m.createdAt).toLocaleString('ar-SA')}
-إجمالي السجلات: ${m.totalRecords}
-بصمة التحقق: ${m.checksum.substring(0, 12)}...
-
-تنبيه: سيتم أخذ نسخة أمان تلقائية للبيانات الحالية قبل الاسترجاع. هل توافق على استبدال البيانات الحالية؟`,
-        confirmText: 'نعم، استرجع البيانات الآن',
+        title: 'تأكيد استعادة النسخة المحلية',
+        message: `تم التحقق من سلامة الملف بنجاح (${m.totalRecords} سجل).\nتاريخ النسخة: ${new Date(
+          m.createdAt
+        ).toLocaleString('ar-EG')}\n\nسيتم أخذ نسخة أمان تلقائية للبيانات الحالية قبل الاستعادة. هل توافق؟`,
+        confirmText: 'نعم، استعادة الآن',
         isDanger: true,
         onConfirm: async () => {
           setDexieBackupLoading(true);
@@ -233,7 +304,7 @@ export const BackupScreen: React.FC = () => {
             showToast(res.message);
             await loadHistoricalBackups();
           } catch (err: any) {
-            showToast(err.message || 'فشلت عملية الاسترجاع', 'error');
+            showToast(err?.message || 'فشلت عملية الاستعادة', 'error');
           } finally {
             setDexieBackupLoading(false);
             setConfirmModal(null);
@@ -241,54 +312,67 @@ export const BackupScreen: React.FC = () => {
         },
       });
     } catch (err: any) {
-      showToast(err.message || 'تعذر قراءة ملف النسخة الاحتياطية', 'error');
+      showToast(err?.message || 'تعذر قراءة ملف النسخة الاحتياطية', 'error');
     } finally {
       setDexieBackupLoading(false);
       if (dexieFileInputRef.current) dexieFileInputRef.current.value = '';
     }
   };
 
-  const handleRestoreHistorical = (item: StorageBackupRecord) => {
-    setConfirmModal({
-      title: 'استرجاع نسخة تاريخية محفوظة',
-      message: `هل أنت متأكد من استرجاع النسخة "${item.label}" (${item.fileName})؟
-تاريخ الحفظ: ${new Date(item.createdAt).toLocaleString('ar-SA')}
-إجمالي السجلات: ${item.totalRecords}
-البصمة: ${item.checksum.substring(0, 12)}...
+  const handleRestoreHistorical = async (item: StorageBackupRecord) => {
+    setDexieBackupLoading(true);
+    try {
+      // Mandatory Sandbox check before confirmation
+      const validation = await DB.validateBackupInSandbox(item.payloadJson);
+      if (!validation.valid || !validation.manifest) {
+        showToast(validation.error || 'تعذر التحقق من سلامة النسخة في Sandbox', 'error');
+        return;
+      }
 
-سيتم أخذ نسخة أمان تلقائية للبيانات الحالية قبل التطبيق.`,
-      confirmText: 'استرجاع النسخة',
-      isDanger: true,
-      onConfirm: async () => {
-        setDexieBackupLoading(true);
-        try {
-          const res = await DB.restoreDexieBackupSafely(item.payloadJson);
-          playSuccessChime();
-          setSettings(DB.getSettings());
-          showToast(res.message);
-          await loadHistoricalBackups();
-        } catch (err: any) {
-          showToast(err.message || 'فشلت عملية الاسترجاع', 'error');
-        } finally {
-          setDexieBackupLoading(false);
-          setConfirmModal(null);
-        }
-      },
-    });
+      setConfirmModal({
+        title: 'تأكيد استعادة النسخة المحفوظة',
+        message: `تم فحص النسخة والتأكد من سلامتها (${validation.manifest.totalRecords} سجل).\nتاريخ الحفظ: ${new Date(
+          item.createdAt
+        ).toLocaleString('ar-EG')}\n\nسيتم أخذ نسخة أمان تلقائية للبيانات الحالية قبل التطبيق. هل تريد المتابعة؟`,
+        confirmText: 'نعم، استعادة النسخة',
+        isDanger: true,
+        onConfirm: async () => {
+          setDexieBackupLoading(true);
+          try {
+            const res = await DB.restoreDexieBackupSafely(item.payloadJson);
+            playSuccessChime();
+            setSettings(DB.getSettings());
+            showToast(res.message);
+            await loadHistoricalBackups();
+          } catch (err: any) {
+            showToast(err?.message || 'فشلت عملية الاستعادة', 'error');
+          } finally {
+            setDexieBackupLoading(false);
+            setConfirmModal(null);
+          }
+        },
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'حدث خطأ أثناء فحص النسخة قبل الاستعادة', 'error');
+    } finally {
+      setDexieBackupLoading(false);
+    }
   };
 
-  const handleDeleteHistorical = (id: string, fileName: string) => {
+  const handleDeleteHistorical = (item: StorageBackupRecord) => {
     setConfirmModal({
-      title: 'حذف نسخة تاريخية',
-      message: `هل تريد حذف النسخة الاحتياطية المحفوظة محلياً (${fileName})؟`,
-      confirmText: 'حذف',
+      title: 'حذف النسخة الاحتياطية',
+      message: `هل تريد حذف النسخة المحفوظة بتاريخ ${new Date(item.createdAt).toLocaleString(
+        'ar-EG'
+      )}؟`,
+      confirmText: 'حذف النسخة',
       isDanger: true,
       onConfirm: async () => {
         try {
-          await DB.deleteHistoricalBackup(id);
-          showToast('تم حذف النسخة بنجاح');
+          await DB.deleteHistoricalBackup(item.id);
+          showToast('تم حذف النسخة المحلية بنجاح');
           await loadHistoricalBackups();
-        } catch (err) {
+        } catch {
           showToast('فشل حذف النسخة', 'error');
         } finally {
           setConfirmModal(null);
@@ -307,9 +391,486 @@ export const BackupScreen: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    showToast(`تم تنزيل النسخة (${item.fileName})`);
+    showToast('تم تنزيل ملف النسخة الاحتياطية');
   };
 
+  const handleExportSqliteFile = async () => {
+    setFileLoading(true);
+    try {
+      const { blob, fileName } = await createSqliteDbBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      playSuccessChime();
+      showToast('تم تصدير النسخة الاحتياطية بصيغة .db بنجاح');
+    } catch (err) {
+      console.error(err);
+      showToast('حدث خطأ أثناء تصدير الملف', 'error');
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  const handleSqliteFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileLoading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      // Mandatory Sandbox check for uploaded file before confirming restore
+      const { verifyDriveBackupInSandbox } = await import(
+        '../services/storage/backup/driveBackupVerifier'
+      );
+      const verification = await verifyDriveBackupInSandbox(buffer, {
+        fileId: 'local_file_import',
+        fileName: file.name,
+        reportedSize: String(file.size),
+      });
+      setDriveVerificationResult(verification);
+
+      if (!verification.structureValid || !verification.sandboxRestorable) {
+        showToast(verification.error || 'فشل فحص الملف في البيئة المعزولة (Sandbox)', 'error');
+        return;
+      }
+
+      setConfirmModal({
+        title: 'تأكيد استعادة ملف النسخة الاحتياطية',
+        message: `تم فحص الملف "${file.name}" بنجاح (${verification.totalRecords} سجل).\n\nهل تريد استعادة البيانات الحالية من هذا الملف؟`,
+        confirmText: 'نعم، استعادة البيانات',
+        isDanger: true,
+        onConfirm: async () => {
+          setFileLoading(true);
+          try {
+            const res = await universalRestore(buffer);
+            if (res.success) {
+              playSuccessChime();
+              setSettings(DB.getSettings());
+              showToast(res.message);
+              await loadHistoricalBackups();
+            } else {
+              showToast(res.message, 'error');
+            }
+          } catch (err: any) {
+            showToast(err?.message || 'تعذر استعادة الملف', 'error');
+          } finally {
+            setFileLoading(false);
+            setConfirmModal(null);
+          }
+        },
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر قراءة الملف المحدد', 'error');
+    } finally {
+      setFileLoading(false);
+      if (sqliteFileInputRef.current) sqliteFileInputRef.current.value = '';
+    }
+  };
+
+  // =========================================================================
+  // Service 1: Independent Google Drive Handlers (Preserves all Sandbox rules)
+  // =========================================================================
+  const handleConnectGoogleDrive = async (): Promise<boolean> => {
+    setDriveLoading(true);
+    try {
+      const nextState = await connectGoogleDrive({ prompt: 'select_account' });
+      const email = nextState.account?.email || '';
+      await DB.saveSettings({
+        googleDriveLinked: true,
+        driveAccountEmail: email,
+      });
+      setSettings(DB.getSettings());
+      playSuccessChime();
+      await loadGoogleDriveBackupsOnly();
+      return true;
+    } catch (err: any) {
+      console.error(err);
+      showToast(err?.message || 'تعذر ربط حساب Google Drive', 'error');
+      return false;
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
+  const handleDisconnectGoogleDrive = async () => {
+    setDriveLoading(true);
+    try {
+      await disconnectGoogleDrive();
+      await DB.clearGoogleDriveLink();
+      setDriveBackups([]);
+      setDriveVerificationResult(null);
+      setSettings(DB.getSettings());
+      playSuccessChime();
+      showToast('تم فصل حساب Google Drive دون التأثير على البيانات المحلية');
+    } catch (err: any) {
+      showToast(err?.message || 'حدث خطأ أثناء فصل Google Drive', 'error');
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
+  const handleBackupToGoogleDrive = async () => {
+    setDriveLoading(true);
+    try {
+      if (!getGoogleDriveState().tokenValid) {
+        const nextState = await connectGoogleDrive({ prompt: 'select_account' });
+        await DB.saveSettings({
+          googleDriveLinked: true,
+          driveAccountEmail: nextState.account?.email || '',
+        });
+      }
+
+      const { binary, fileName } = await createSqliteDbBlob();
+      const uploaded = await uploadBackupToGoogleDrive(binary, fileName);
+      await DB.saveSettings({ driveLastBackupAt: uploaded.uploadedAt });
+      setSettings(DB.getSettings());
+      playSuccessChime();
+      showToast('تم رفع النسخة الاحتياطية إلى Google Drive بنجاح');
+      await loadGoogleDriveBackupsOnly();
+    } catch (err: any) {
+      console.error(err);
+      showToast(err?.message || 'تعذر رفع النسخة الاحتياطية إلى Google Drive', 'error');
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
+  const handleVerifyDriveBackup = async (file: DriveFileItem) => {
+    setDriveBusyId(file.id);
+    try {
+      const result = await verifyBackupOnGoogleDrive(file);
+      setDriveVerificationResult(result);
+      if (result.structureValid && result.sandboxRestorable && result.sha256Status !== 'mismatch') {
+        playSuccessChime();
+        showToast(`تم فحص النسخة "${file.name}" بنجاح (${result.totalRecords} سجل)`);
+      } else {
+        showToast(result.error || 'تعذر التحقق من سلامة هذه النسخة', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر فحص النسخة في Sandbox', 'error');
+    } finally {
+      setDriveBusyId(null);
+    }
+  };
+
+  const handleRestoreFromGoogleDrive = async (file: DriveFileItem) => {
+    setDriveBusyId(file.id);
+    try {
+      // Mandatory Sandbox check before showing confirmation or restoring
+      const verification = await verifyBackupOnGoogleDrive(file);
+      setDriveVerificationResult(verification);
+
+      if (
+        !verification.structureValid ||
+        !verification.sandboxRestorable ||
+        verification.sha256Status === 'mismatch'
+      ) {
+        showToast(
+          verification.error || 'فشل فحص النسخة في Sandbox؛ تم إيقاف الاستعادة لحماية بياناتك.',
+          'error'
+        );
+        return;
+      }
+
+      setConfirmModal({
+        title: 'تأكيد استعادة النسخة الاحتياطية',
+        message: `تم فحص النسخة "${file.name}" والتأكد من سلامتها (${verification.totalRecords} سجل).\n\nهل تريد استعادة البيانات الحالية من هذه النسخة؟`,
+        confirmText: 'نعم، استعادة النسخة',
+        isDanger: false,
+        onConfirm: async () => {
+          setDriveLoading(true);
+          try {
+            const buffer = await downloadBackupFromGoogleDrive(file.id);
+            const res = await universalRestore(buffer);
+            if (res.success) {
+              playSuccessChime();
+              setSettings(DB.getSettings());
+              showToast(res.message);
+            } else {
+              showToast(res.message, 'error');
+            }
+          } catch (err: any) {
+            showToast(err?.message || 'تعذر استعادة النسخة من Google Drive', 'error');
+          } finally {
+            setDriveLoading(false);
+            setConfirmModal(null);
+          }
+        },
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر فحص النسخة قبل الاستعادة', 'error');
+    } finally {
+      setDriveBusyId(null);
+    }
+  };
+
+  const handleDeleteDriveBackup = (file: DriveFileItem) => {
+    setConfirmModal({
+      title: 'حذف النسخة الاحتياطية',
+      message: `هل تريد حذف النسخة "${file.name}" من Google Drive نهائياً؟`,
+      confirmText: 'حذف نهائياً',
+      isDanger: true,
+      onConfirm: async () => {
+        setDriveLoading(true);
+        try {
+          await deleteBackupFromGoogleDrive(file.id);
+          playSuccessChime();
+          showToast('تم حذف النسخة من Google Drive');
+          await loadGoogleDriveBackupsOnly();
+        } catch (err: any) {
+          showToast(err?.message || 'تعذر حذف الملف من Google Drive', 'error');
+        } finally {
+          setDriveLoading(false);
+          setConfirmModal(null);
+        }
+      },
+    });
+  };
+
+  // =========================================================================
+  // Service 2: Independent Firebase Handlers (Test Project Isolated)
+  // =========================================================================
+  const handleConnectFirebase = async () => {
+    setFirebaseLoading(true);
+    try {
+      const nextFb = await connectFirebaseWithGoogle();
+      await DB.saveSettings({
+        firebaseLinked: true,
+        firebaseAccountEmail: nextFb.user?.email || '',
+        firebaseLastSyncAt: nextFb.lastSyncAt || new Date().toISOString(),
+        firebaseProjectId: nextFb.projectId,
+      });
+      setSettings(DB.getSettings());
+      playSuccessChime();
+      showToast(`تم تسجيل الدخول في Firebase (${nextFb.projectId})`);
+      if (nextFb.user?.uid && nextFb.isTestProject) {
+        await loadFirestoreBackupsOnly(nextFb.user.uid);
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'فشل تسجيل الدخول في Firebase', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleDisconnectFirebase = async () => {
+    setFirebaseLoading(true);
+    try {
+      await disconnectFirebase();
+      await DB.clearFirebaseLink();
+      setFirestoreBackups([]);
+      setFirebaseDiagnostic(null);
+      setSettings(DB.getSettings());
+      playSuccessChime();
+      showToast('تم فصل Firebase دون حذف أي بيانات محلية');
+    } catch (err: any) {
+      showToast(err?.message || 'حدث خطأ أثناء فصل Firebase', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleApplyTestProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFirebaseLoading(true);
+    try {
+      const next = await configureTestFirebaseProject(testProjectForm);
+      setFirebaseDiagnostic(null);
+      setFirestoreBackups([]);
+      await DB.saveSettings({ firebaseProjectId: next.projectId });
+      showToast(`تم تهيئة المشروع الاختباري (${next.projectId})`);
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر تهيئة المشروع الاختباري', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleClearTestProject = async () => {
+    setFirebaseLoading(true);
+    try {
+      await configureTestFirebaseProject(null);
+      setFirebaseDiagnostic(null);
+      setFirestoreBackups([]);
+      showToast('تم إلغاء المشروع الاختباري');
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر إعادة الضبط', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handlePasteFirebaseJsonConfig = (raw: string) => {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setTestProjectForm((prev) => ({
+          projectId: String(parsed.projectId || prev.projectId),
+          apiKey: String(parsed.apiKey || prev.apiKey),
+          authDomain: String(parsed.authDomain || prev.authDomain),
+          appId: String(parsed.appId || prev.appId),
+          firestoreDatabaseId: String(parsed.firestoreDatabaseId || '(default)'),
+          storageBucket: parsed.storageBucket ? String(parsed.storageBucket) : undefined,
+          messagingSenderId: parsed.messagingSenderId ? String(parsed.messagingSenderId) : undefined,
+        }));
+        showToast('تم تعبئة حقول المشروع الاختباري');
+      }
+    } catch {
+      showToast('صيغة JSON غير صالحة', 'error');
+    }
+  };
+
+  const handleCheckFirestoreReachability = async () => {
+    setFirebaseLoading(true);
+    try {
+      const diag = await diagnoseFirestoreConnection();
+      if (diag.ok) {
+        await DB.saveSettings({ firebaseLastSyncAt: new Date().toISOString() });
+        playSuccessChime();
+        showToast(diag.message);
+      } else {
+        showToast(diag.message, 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'فشل فحص اتصال Firestore', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleRunTestProjectReadWrite = async () => {
+    setFirebaseLoading(true);
+    try {
+      const result = await runFirestoreTestProjectDiagnostic();
+      setFirebaseDiagnostic(result);
+      if (result.ok) {
+        await DB.saveSettings({
+          firebaseLastSyncAt: new Date().toISOString(),
+          firebaseProjectId: result.projectId,
+        });
+        playSuccessChime();
+        showToast(result.message);
+      } else {
+        showToast(result.message, 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'فشل اختبار القراءة والكتابة', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleBackupToFirestore = async () => {
+    if (!firebaseState.user?.uid) {
+      await handleConnectFirebase();
+      return;
+    }
+    if (!firebaseState.isTestProject) {
+      showToast('يرجى إعداد وتفعيل مشروع اختباري معزول من الإعدادات أولاً.', 'error');
+      return;
+    }
+    setFirebaseLoading(true);
+    try {
+      const dataStr = DB.backupData();
+      const products = DB.getProducts();
+      const invoices = DB.getInvoices();
+      await saveBackupToFirestore(firebaseState.user.uid, dataStr, {
+        productsCount: products.length,
+        invoicesCount: invoices.length,
+      });
+      await DB.saveSettings({ firebaseLastSyncAt: new Date().toISOString() });
+      playSuccessChime();
+      showToast('تم رفع اللقطة السحابية بنجاح');
+      await loadFirestoreBackupsOnly(firebaseState.user.uid);
+    } catch (err: any) {
+      showToast(err?.message || 'فشل رفع النسخة إلى Firestore', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleRestoreFromFirestore = async (backup: FirestoreBackupItem) => {
+    if (!firebaseState.user?.uid) return;
+    const uid = firebaseState.user.uid;
+    setFirebaseLoading(true);
+    try {
+      const jsonStr = await loadBackupFromFirestore(uid, backup.id);
+      const parsed = JSON.parse(jsonStr);
+      if (parsed?.format === 'CashierProCompleteDexieBackup') {
+        const validation = await DB.validateBackupInSandbox(parsed);
+        if (!validation.valid) {
+          showToast(validation.error || 'فشل التحقق من سلامة النسخة السحابية', 'error');
+          return;
+        }
+      } else if (!parsed || !Array.isArray(parsed.products)) {
+        showToast('تنسيق النسخة السحابية غير صالح للاستعادة', 'error');
+        return;
+      }
+
+      setConfirmModal({
+        title: 'تأكيد استعادة النسخة السحابية',
+        message: `تم فحص اللقطة "${backup.fileName}" بنجاح.\n\nهل تريد استعادة بيانات المحل من هذه اللقطة؟`,
+        confirmText: 'نعم، استعادة الآن',
+        isDanger: false,
+        onConfirm: async () => {
+          setFirebaseLoading(true);
+          try {
+            const res = await universalRestore(jsonStr);
+            if (res.success) {
+              playSuccessChime();
+              setSettings(DB.getSettings());
+              showToast(res.message);
+            } else {
+              showToast(res.message, 'error');
+            }
+          } catch (err: any) {
+            showToast(err?.message || 'تعذر استعادة النسخة', 'error');
+          } finally {
+            setFirebaseLoading(false);
+            setConfirmModal(null);
+          }
+        },
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر تحميل وفحص النسخة السحابية', 'error');
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  const handleDeleteFirestoreBackup = (backup: FirestoreBackupItem) => {
+    if (!firebaseState.user?.uid) return;
+    const uid = firebaseState.user.uid;
+    setConfirmModal({
+      title: 'حذف النسخة السحابية',
+      message: `هل تريد حذف اللقطة "${backup.fileName}" من المشروع الاختباري؟`,
+      confirmText: 'حذف اللقطة',
+      isDanger: true,
+      onConfirm: async () => {
+        setFirebaseLoading(true);
+        try {
+          await deleteBackupFromFirestore(uid, backup.id);
+          playSuccessChime();
+          showToast('تم حذف النسخة السحابية');
+          await loadFirestoreBackupsOnly(uid);
+        } catch (err: any) {
+          showToast(err?.message || 'تعذر حذف النسخة', 'error');
+        } finally {
+          setFirebaseLoading(false);
+          setConfirmModal(null);
+        }
+      },
+    });
+  };
+
+  // =========================================================================
+  // Settings Persistence Helpers
+  // =========================================================================
   const updateSettingImmediate = async (partial: Partial<StoreSettings>) => {
     const next = { ...settings, ...partial };
     setSettings(next);
@@ -325,964 +886,682 @@ export const BackupScreen: React.FC = () => {
     try {
       await DB.saveSettings(settings);
       playSuccessChime();
-      showToast('تم حفظ إعدادات المحل والعملة والمظهر بنجاح');
-    } catch (err) {
-      console.error('Failed to save settings:', err);
+      showToast('تم حفظ إعدادات المحل بنجاح');
+    } catch {
       showToast('حدث خطأ أثناء حفظ الإعدادات', 'error');
     }
   };
 
-  const handleExportBackup = async (format: 'db' | 'json' = 'db', chooseLocationManually: boolean = false) => {
-    setCloudLoading(true);
-    try {
-      const { blob, fileName } =
-        format === 'db'
-          ? await createSqliteDbBlob()
-          : {
-              blob: new Blob([DB.backupData()], { type: 'application/json' }),
-              fileName: generateBackupFileName('autoSave').replace('.db', '.json'),
-            };
+  // =========================================================================
+  // Derived Honest Status & Timestamps (Strictly Isolated Per Source)
+  // =========================================================================
+  const autoBackups = historicalBackups.filter((b) => b.type === 'daily_auto');
+  const latestAutoIsRecent =
+    autoBackups.length > 0 &&
+    Date.now() - new Date(autoBackups[0].createdAt).getTime() < TWENTY_FOUR_HOURS_MS;
 
-      // If user requested manual location selection and browser supports File System Access API
-      if (chooseLocationManually && 'showSaveFilePicker' in window) {
-        try {
-          const handle = await (window as any).showSaveFilePicker({
-            suggestedName: fileName,
-            types: [
-              format === 'db'
-                ? {
-                    description: 'قاعدة بيانات SQLite للكاشير (*.db)',
-                    accept: { 'application/x-sqlite3': ['.db'] },
-                  }
-                : {
-                    description: 'ملف JSON للنسخ الاحتياطي (*.json)',
-                    accept: { 'application/json': ['.json'] },
-                  },
-            ],
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          playSuccessChime();
-          showToast(`تم حفظ النسخة بنجاح في المكان المحدد يدوياً: ${handle.name || fileName}`);
-          return;
-        } catch (err: any) {
-          if (err.name === 'AbortError') {
-            // User cancelled file picker intentionally
-            return;
-          }
-          console.warn('showSaveFilePicker error, falling back to download:', err);
-        }
-      }
+  const lastDriveTimestamp =
+    driveBackups[0]?.createdTime ||
+    driveState.lastBackupAt ||
+    settings.driveLastBackupAt ||
+    null;
 
-      // Standard browser download (or fallback)
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      playSuccessChime();
-      const dest = settings.backupCustomFolder || 'Download/Cashier/backup';
-      showToast(`تم حفظ النسخة (${fileName}) - مسار المجلد: ${dest}`);
-    } catch (err: any) {
-      console.error(err);
-      showToast('حدث خطأ أثناء تصدير ملف قاعدة البيانات', 'error');
-    } finally {
-      setCloudLoading(false);
-    }
-  };
+  const isSourceComplete =
+    backupSource === 'drive'
+      ? driveState.tokenValid && (driveBackups.length > 0 || Boolean(lastDriveTimestamp))
+      : backupSource === 'local'
+        ? historicalBackups.length > 0
+        : Boolean(firebaseState.user && firebaseState.isTestProject && firestoreBackups.length > 0);
 
-  const handleChooseDirectoryManually = async () => {
-    if ('showDirectoryPicker' in window) {
-      try {
-        const dirHandle = await (window as any).showDirectoryPicker();
-        const fullPath = `Download/Cashier/${dirHandle.name}`;
-        updateSettingImmediate({ backupCustomFolder: fullPath });
-        playSuccessChime();
-        showToast(`تم تعيين مجلد النسخ الاحتياطي يدوياً إلى: ${dirHandle.name}`);
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          showToast('تعذر اختيار المجلد من الجهاز', 'error');
-        }
-      }
+  const activeLastBackupAt: string | null =
+    backupSource === 'drive'
+      ? lastDriveTimestamp
+      : backupSource === 'local'
+        ? historicalBackups[0]?.createdAt || null
+        : firestoreBackups[0]?.createdAt || firebaseState.lastSyncAt || null;
+
+  const isPrimaryActionBusy =
+    backupSource === 'drive'
+      ? driveLoading
+      : backupSource === 'local'
+        ? dexieBackupLoading
+        : firebaseLoading;
+
+  const handlePrimaryUpload = async () => {
+    if (backupSource === 'drive') {
+      await handleBackupToGoogleDrive();
+    } else if (backupSource === 'local') {
+      await handleCreateDexieBackup('manual');
     } else {
-      showToast('يرجى كتابة اسم أو مسار المجلد يدوياً في الحقل أدناه', 'error');
+      await handleBackupToFirestore();
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setCloudLoading(true);
-    try {
-      const res = await universalRestore(file);
-      if (res.success) {
-        playSuccessChime();
-        setSettings(DB.getSettings());
-        showToast(res.message);
-      } else {
-        showToast(res.message, 'error');
-      }
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'تعذر استرجاع ملف قاعدة البيانات', 'error');
-    } finally {
-      setCloudLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+  const formatArabicDateTime = (iso: string | null): string => {
+    if (!iso) return 'لا توجد نسخة محفوظة بعد';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'تاريخ غير متوفر';
+    return d.toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' });
   };
-
-  // Google Sign-In with Google Drive scopes
-  const handleGoogleSignIn = async () => {
-    setCloudLoading(true);
-    try {
-      const res = await signInWithGoogle();
-      if (res?.user) {
-        setCurrentUser(res.user);
-        await DB.saveSettings({ googleDriveLinked: true, userEmail: res.user.email || '' });
-        setSettings(DB.getSettings());
-        playSuccessChime();
-        showToast(`مرحباً ${res.user.displayName || ''}، تم تسجيل الدخول بحساب Google بنجاح`);
-        await loadCloudBackups(res.user);
-      }
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'حدث خطأ أثناء تسجيل الدخول بحساب Google', 'error');
-    } finally {
-      setCloudLoading(false);
-    }
-  };
-
-  const handleGoogleSignOut = async () => {
-    try {
-      await signOutGoogle();
-      await DB.clearGoogleAccount();
-      setCurrentUser(null);
-      setDriveBackups([]);
-      setFirestoreBackups([]);
-      setSettings(DB.getSettings());
-      playSuccessChime();
-      showToast('تم تسجيل الخروج وإلغاء ربط الحساب بنجاح');
-    } catch (err) {
-      showToast('حدث خطأ أثناء تسجيل الخروج', 'error');
-    }
-  };
-
-  // Google Drive Upload
-  const handleBackupToGoogleDrive = async () => {
-    if (!currentUser) {
-      showToast('يرجى تسجيل الدخول بحساب Google أولاً', 'error');
-      return;
-    }
-    setCloudLoading(true);
-    try {
-      const { binary, fileName } = await createSqliteDbBlob();
-      await uploadBackupToGoogleDrive(binary, fileName);
-      playSuccessChime();
-      showToast(`تم رفع النسخة الاحتياطية (${fileName}) إلى Google Drive بنجاح`);
-      const updatedList = await listGoogleDriveBackups();
-      setDriveBackups(updatedList);
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'فشل حفظ النسخة في Google Drive', 'error');
-    } finally {
-      setCloudLoading(false);
-    }
-  };
-
-  // Google Drive Restore with Confirmation Dialog
-  const handleRestoreFromGoogleDrive = (file: DriveFileItem) => {
-    setConfirmModal({
-      title: 'استرجاع النسخة الاحتياطية من Google Drive',
-      message: `هل أنت متأكد من استرجاع الملف "${file.name}"؟ سيتم استبدال البيانات الحالية بمحتوى النسخة الاحتياطية المحددة.`,
-      confirmText: 'نعم، استرجع البيانات',
-      isDanger: false,
-      onConfirm: async () => {
-        setCloudLoading(true);
-        try {
-          const buffer = await downloadBackupFromGoogleDrive(file.id);
-          const res = await universalRestore(buffer);
-          if (res.success) {
-            playSuccessChime();
-            setSettings(DB.getSettings());
-            showToast(res.message);
-          } else {
-            showToast(res.message, 'error');
-          }
-        } catch (err: any) {
-          showToast(err.message || 'تعذر تحميل النسخة من Google Drive', 'error');
-        } finally {
-          setCloudLoading(false);
-          setConfirmModal(null);
-        }
-      },
-    });
-  };
-
-  // Google Drive Delete with Confirmation Dialog
-  const handleDeleteDriveBackup = (file: DriveFileItem) => {
-    setConfirmModal({
-      title: 'حذف ملف النسخة الاحتياطية من Google Drive',
-      message: `هل أنت متأكد من رغبتك في حذف الملف "${file.name}" من Google Drive نهائياً؟ هذا الإجراء لا يمكن التراجع عنه.`,
-      confirmText: 'حذف الملف نهائياً',
-      isDanger: true,
-      onConfirm: async () => {
-        setCloudLoading(true);
-        try {
-          await deleteBackupFromGoogleDrive(file.id);
-          playSuccessChime();
-          showToast('تم حذف ملف النسخة من Google Drive');
-          const updated = await listGoogleDriveBackups();
-          setDriveBackups(updated);
-        } catch (err: any) {
-          showToast(err.message || 'تعذر حذف الملف من Google Drive', 'error');
-        } finally {
-          setCloudLoading(false);
-          setConfirmModal(null);
-        }
-      },
-    });
-  };
-
-  // Cloud Firestore Upload
-  const handleBackupToFirestore = async () => {
-    if (!currentUser) return;
-    setCloudLoading(true);
-    try {
-      const dataStr = DB.backupData();
-      const products = DB.getProducts();
-      const invoices = DB.getInvoices();
-      await saveBackupToFirestore(currentUser.uid, dataStr, {
-        productsCount: products.length,
-        invoicesCount: invoices.length,
-      });
-      playSuccessChime();
-      showToast('تم حفظ اللقطة السحابية في Firebase Firestore بنجاح');
-      const updated = await listFirestoreBackups(currentUser.uid);
-      setFirestoreBackups(updated);
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'فشل حفظ النسخة في Firestore', 'error');
-    } finally {
-      setCloudLoading(false);
-    }
-  };
-
-  // Cloud Firestore Restore
-  const handleRestoreFromFirestore = (backup: FirestoreBackupItem) => {
-    if (!currentUser) return;
-    setConfirmModal({
-      title: 'استرجاع النسخة السحابية من Firebase Firestore',
-      message: `هل أنت متأكد من استرجاع النسخة "${backup.fileName}"؟ سيتم تحديث قاعدة بيانات المحل بالكامل.`,
-      confirmText: 'استرجاع الآن',
-      isDanger: false,
-      onConfirm: async () => {
-        setCloudLoading(true);
-        try {
-          const jsonStr = await loadBackupFromFirestore(currentUser.uid, backup.id);
-          const res = await universalRestore(jsonStr);
-          if (res.success) {
-            playSuccessChime();
-            setSettings(DB.getSettings());
-            showToast(res.message);
-          } else {
-            showToast(res.message, 'error');
-          }
-        } catch (err: any) {
-          showToast(err.message || 'تعذر استرجاع النسخة من Firestore', 'error');
-        } finally {
-          setCloudLoading(false);
-          setConfirmModal(null);
-        }
-      },
-    });
-  };
-
-  // Cloud Firestore Delete
-  const handleDeleteFirestoreBackup = (backup: FirestoreBackupItem) => {
-    if (!currentUser) return;
-    setConfirmModal({
-      title: 'حذف النسخة من Firebase Firestore',
-      message: `هل تريد حذف النسخة "${backup.fileName}" من قاعدة بيانات Firestore؟`,
-      confirmText: 'حذف النسخة',
-      isDanger: true,
-      onConfirm: async () => {
-        setCloudLoading(true);
-        try {
-          await deleteBackupFromFirestore(currentUser.uid, backup.id);
-          playSuccessChime();
-          showToast('تم حذف النسخة من Firestore');
-          const updated = await listFirestoreBackups(currentUser.uid);
-          setFirestoreBackups(updated);
-        } catch (err: any) {
-          showToast(err.message || 'تعذر حذف النسخة من Firestore', 'error');
-        } finally {
-          setCloudLoading(false);
-          setConfirmModal(null);
-        }
-      },
-    });
-  };
-
-  const currentFontSize = settings.fontSize || 16;
-  const currentProductsFontSize = settings.productsFontSize || 15;
-  const currentFont = settings.fontFamily || 'Cairo';
-  const isDark = settings.theme === 'dark';
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto py-2">
-      {/* Status notification */}
+    <div dir="rtl" className="max-w-2xl mx-auto py-1 space-y-4">
+      {/* Toast Notification */}
       {statusMessage && (
         <div
-          className={`sticky top-16 z-30 p-3.5 rounded-2xl text-xs font-bold text-center flex items-center justify-center gap-2 shadow-md ${
+          className={`sticky top-2 z-30 p-3.5 rounded-2xl text-[14px] font-bold text-center flex items-center justify-center gap-2 shadow-sm border ${
             statusMessage.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
+              ? 'bg-[var(--color-success-bg)] text-[var(--color-success)] border-[var(--color-success-border)]'
+              : 'bg-[var(--color-danger-bg)] text-[var(--color-danger)] border-[var(--color-danger-border)]'
           }`}
         >
-          {statusMessage.type === 'success' ? <Check className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+          {statusMessage.type === 'success' ? (
+            <Check className="h-4 w-4 shrink-0" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+          )}
           <span>{statusMessage.text}</span>
         </div>
       )}
 
-      {/* Settings Top Header Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-        <div>
-          <h2 className="font-black text-slate-900 text-base sm:text-lg">إعدادات النظام والنسخ الاحتياطي</h2>
-          <p className="text-xs text-slate-500 mt-0.5">انقر على الخيار الذي تريد تعديله لفتح تفرعاته</p>
-        </div>
-        {openSection && (
-          <button
-            type="button"
-            onClick={() => setOpenSection(null)}
-            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
-          >
-            إغلاق التفرعات
-          </button>
-        )}
-      </div>
+      {/* VIEW 1: Auto-Backup Dedicated Konnash-style Screen */}
+      {activeView === 'auto_backup' && (
+        <AutoBackupView
+          autoBackups={autoBackups}
+          loading={dexieBackupLoading}
+          onBack={() => setActiveView(initialView === 'settings' ? 'settings' : 'backup')}
+          onRunAutoBackupNow={() => handleCreateDexieBackup('daily_auto')}
+        />
+      )}
 
-      <div className="space-y-3">
-        {/* 1. النمط الليلي والنهاري (Theme Mode) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('theme')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'theme' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <div className="h-11 w-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                {isDark ? <Moon className="h-5 w-5 text-indigo-500" /> : <Sun className="h-5 w-5" />}
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">النمط الليلي والنهاري</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">مظهر الواجهة المريح للعين أثناء العمل</p>
-              </div>
-            </div>
+      {/* VIEW 2: Clean Settings Hub (Preserves Theme, Currency, Fonts, Store, Firebase) */}
+      {activeView === 'settings' && (
+        <StoreSettingsHub
+          settings={settings}
+          onUpdateImmediate={updateSettingImmediate}
+          onSaveStoreForm={handleSaveStoreForm}
+          onBack={() => (initialView === 'settings' && onExitView ? onExitView() : setActiveView('backup'))}
+          onOpenAutoBackup={() => setActiveView('auto_backup')}
+          firebaseState={firebaseState}
+          firebaseLoading={firebaseLoading}
+          firebaseDiagnostic={firebaseDiagnostic}
+          testProjectForm={testProjectForm}
+          setTestProjectForm={setTestProjectForm}
+          onConnectFirebase={handleConnectFirebase}
+          onDisconnectFirebase={handleDisconnectFirebase}
+          onApplyTestProject={handleApplyTestProject}
+          onClearTestProject={handleClearTestProject}
+          onPasteFirebaseJson={handlePasteFirebaseJsonConfig}
+          onCheckFirestoreReachability={handleCheckFirestoreReachability}
+          onRunTestProjectReadWrite={handleRunTestProjectReadWrite}
+        />
+      )}
 
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl hidden sm:inline-block ${
-                isDark ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-              }`}>
-                {isDark ? 'النمط الليلي (داكن)' : 'النمط النهاري (فاتح)'}
-              </span>
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'theme' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
+      {/* VIEW 3: Primary Backup & Restore Screen */}
+      {activeView === 'backup' && (
+        <div className="app-card px-5 py-6 sm:px-8 sm:py-8 space-y-8">
+          {/* 1. Header: Title "النسخ الاحتياطي" + Clean Shortcuts */}
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="app-page-title text-[var(--brand-primary)]">النسخ الاحتياطي</h1>
 
-          {openSection === 'theme' && (
-            <div className="p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => updateSettingImmediate({ theme: 'light' })}
-                  className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl border-2 font-bold text-sm transition cursor-pointer ${
-                    !isDark
-                      ? 'border-teal-600 bg-teal-50/70 text-teal-800 shadow-xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveView('auto_backup')}
+                className="flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-full hover:bg-[var(--brand-soft)] text-[var(--text-primary)] text-[14px] font-bold transition cursor-pointer"
+                title="النسخ التلقائي"
+              >
+                <span
+                  className={`h-7 w-7 rounded-full flex items-center justify-center ${
+                    latestAutoIsRecent
+                      ? 'bg-[var(--color-success-bg)] text-[var(--color-success)]'
+                      : 'bg-[var(--brand-soft)] text-[var(--brand-primary)]'
                   }`}
                 >
-                  <Sun className="h-5 w-5 text-amber-500" />
-                  <span>النمط النهاري (فاتح)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => updateSettingImmediate({ theme: 'dark' })}
-                  className={`flex items-center justify-center gap-2.5 p-3.5 rounded-2xl border-2 font-bold text-sm transition cursor-pointer ${
-                    isDark
-                      ? 'border-teal-500 bg-teal-950/50 text-teal-300 shadow-xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <Moon className="h-5 w-5 text-indigo-400" />
-                  <span>النمط الليلي (داكن)</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 2. نوع العملة وسعر الصرف */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('currency')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'currency' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <div className="h-11 w-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                <Coins className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">نوع العملة وسعر الصرف</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">تحديد العملة المستخدمة في الفواتير والأسعار</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hidden sm:inline-block">
-                {settings.currency || 'د.ع'}
-              </span>
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'currency' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
-
-          {openSection === 'currency' && (
-            <div className="p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {CURRENCY_PRESETS.map((preset) => {
-                  const active = settings.currency === preset.value;
-                  return (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => updateSettingImmediate({ currency: preset.value })}
-                      className={`p-2.5 rounded-2xl border text-xs font-extrabold transition cursor-pointer ${
-                        active
-                          ? 'border-teal-600 bg-teal-600 text-white shadow-xs'
-                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    كتابة نوع العملة يدويًا (يظهر في كل الفواتير):
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.currency}
-                    onChange={(e) => updateSettingImmediate({ currency: e.target.value })}
-                    placeholder="مثال: د.ع أو دينار عراقي أو $ أو دولار"
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold focus:border-teal-600 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    سعر صرف 1 دولار بالدينار العراقي (اختياري):
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={settings.exchangeRate || 1500}
-                    onChange={(e) => updateSettingImmediate({ exchangeRate: parseFloat(e.target.value) || 1500 })}
-                    placeholder="1500"
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono font-bold focus:border-teal-600 focus:outline-hidden"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 3. الخطوط العربية وحجم النصوص */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('fonts')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'fonts' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <div className="h-11 w-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                <Type className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">الخطوط العربية وحجم النصوص</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">تخصيص خط البرنامج وحجم خط أسماء المنتجات</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 hidden sm:inline-block">
-                {currentFont} • {currentFontSize}px
-              </span>
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'fonts' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
-
-          {openSection === 'fonts' && (
-            <div className="p-4 sm:p-5 space-y-5 animate-in fade-in duration-200">
-              {/* General Program Font Size */}
-              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-extrabold text-slate-800 block">
-                      1. حجم خط البرنامج العام (القوائم، العناوين، والأزرار):
-                    </span>
-                    <span className="text-[11px] text-slate-500">يؤثر على واجهة البرنامج العامة</span>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-lg bg-teal-600 text-white font-mono text-xs font-bold">
-                    {currentFontSize}px
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { label: 'صغير', size: 14 },
-                    { label: 'متوسط', size: 16 },
-                    { label: 'كبير', size: 18 },
-                    { label: 'كبير جداً', size: 20 },
-                  ].map((item) => (
-                    <button
-                      key={item.size}
-                      type="button"
-                      onClick={() => updateSettingImmediate({ fontSize: item.size })}
-                      className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        currentFontSize === item.size
-                          ? 'bg-slate-800 text-white border-slate-800'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {item.label} ({item.size})
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => updateSettingImmediate({ fontSize: Math.max(12, currentFontSize - 1) })}
-                    className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 cursor-pointer"
-                    title="تصغير خط البرنامج"
-                  >
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <input
-                    type="range"
-                    min={12}
-                    max={22}
-                    step={1}
-                    value={currentFontSize}
-                    onChange={(e) => updateSettingImmediate({ fontSize: Number(e.target.value) })}
-                    className="flex-1 accent-teal-600 cursor-pointer"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => updateSettingImmediate({ fontSize: Math.min(22, currentFontSize + 1) })}
-                    className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 cursor-pointer"
-                    title="تكبير خط البرنامج"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Products Font Size */}
-              <div className="space-y-3 bg-teal-50/40 p-4 rounded-2xl border border-teal-200/80">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-extrabold text-slate-800 block">
-                      2. حجم خط المنتجات (في المخزن وقوائم الفواتير):
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      خاص بأسماء المنتجات والكميات والأسعار فقط
-                    </span>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-lg bg-amber-600 text-white font-mono text-xs font-bold">
-                    {currentProductsFontSize}px
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { label: 'صغير', size: 12 },
-                    { label: 'متوسط', size: 15 },
-                    { label: 'كبير', size: 18 },
-                    { label: 'كبير جداً', size: 22 },
-                  ].map((item) => (
-                    <button
-                      key={item.size}
-                      type="button"
-                      onClick={() => updateSettingImmediate({ productsFontSize: item.size })}
-                      className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        currentProductsFontSize === item.size
-                          ? 'bg-amber-600 text-white border-amber-600'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {item.label} ({item.size})
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateSettingImmediate({ productsFontSize: Math.max(11, currentProductsFontSize - 1) })
-                    }
-                    className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 cursor-pointer"
-                    title="تصغير خط المنتجات"
-                  >
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <input
-                    type="range"
-                    min={11}
-                    max={26}
-                    step={1}
-                    value={currentProductsFontSize}
-                    onChange={(e) => updateSettingImmediate({ productsFontSize: Number(e.target.value) })}
-                    className="flex-1 accent-amber-600 cursor-pointer"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateSettingImmediate({ productsFontSize: Math.min(26, currentProductsFontSize + 1) })
-                    }
-                    className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 cursor-pointer"
-                    title="تكبير خط المنتجات"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="mt-2 rounded-xl bg-white p-3 border border-slate-200 flex items-center justify-between">
-                  <span
-                    style={{ fontSize: `${currentProductsFontSize}px` }}
-                    className="font-bold text-slate-900"
-                  >
-                    معاينة: Lcd iph 11 pro max
-                  </span>
-                  <span
-                    style={{ fontSize: `${currentProductsFontSize}px` }}
-                    className="font-mono font-bold text-teal-700"
-                  >
-                    15,000 {settings.currency}
-                  </span>
-                </div>
-              </div>
-
-              {/* Best Arabic Fonts */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
-                  اختر من أفضل الخطوط العربية:
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {ARABIC_FONTS.map((font) => {
-                    const selected = currentFont === font.id;
-                    return (
-                      <button
-                        key={font.id}
-                        type="button"
-                        onClick={() => updateSettingImmediate({ fontFamily: font.id })}
-                        style={{ fontFamily: `'${font.id}', sans-serif` }}
-                        className={`p-3.5 rounded-2xl border text-right transition flex items-center justify-between cursor-pointer ${
-                          selected
-                            ? 'border-teal-600 bg-teal-50/70 text-teal-900 ring-2 ring-teal-500/20'
-                            : 'border-slate-200 bg-slate-50/60 text-slate-800 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-bold text-sm">{font.name}</div>
-                          <div className="text-xs text-slate-500 mt-0.5">{font.desc}</div>
-                          <div className="text-xs font-bold text-teal-700 mt-1">
-                            15,000 {settings.currency} • فاتورة مبيعات
-                          </div>
-                        </div>
-                        {selected && (
-                          <div className="h-6 w-6 rounded-full bg-teal-600 text-white flex items-center justify-center shrink-0">
-                            <Check className="h-3.5 w-3.5" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 4. بيانات المحل وإيصال الطباعة */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('store')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'store' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <div className="h-11 w-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                <Store className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">بيانات المحل وإيصال الطباعة</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">اسم المحل ورقم الهاتف والعنوان وترويسة الفاتورة</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 max-w-[120px] truncate hidden sm:inline-block">
-                {settings.storeName || 'Cashier'}
-              </span>
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'store' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
-
-          {openSection === 'store' && (
-            <div className="p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
-              <form onSubmit={handleSaveStoreForm} className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">اسم المحل / الشركة</label>
-                    <input
-                      type="text"
-                      value={settings.storeName}
-                      onChange={(e) => updateSettingImmediate({ storeName: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-hidden"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف</label>
-                    <input
-                      type="text"
-                      value={settings.phone}
-                      onChange={(e) => updateSettingImmediate({ phone: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:border-teal-600 focus:outline-hidden"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">العنوان</label>
-                    <input
-                      type="text"
-                      value={settings.address}
-                      onChange={(e) => updateSettingImmediate({ address: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-hidden"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">عبارة أسفل الفاتورة</label>
-                    <input
-                      type="text"
-                      value={settings.receiptFooter}
-                      onChange={(e) => updateSettingImmediate({ receiptFooter: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-hidden"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
-                    <Check className="h-4 w-4" /> يتم حفظ جميع التغييرات والإعدادات تلقائياً
-                  </span>
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-teal-600 px-5 py-2 text-xs font-bold text-white hover:bg-teal-700 shadow-xs transition cursor-pointer"
-                  >
-                    تأكيد الحفظ
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-        </div>
-
-        {/* 5. النسخ الاحتياطي وقاعدة البيانات (.db) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('backup')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'backup' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <div className="h-11 w-11 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
-                <Database className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">النسخ الاحتياطي وقاعدة البيانات (.db)</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">حفظ واسترجاع قاعدة البيانات بصيغة data (autoSave)... .db</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl bg-teal-50 text-teal-800 border border-teal-200 hidden sm:inline-block" dir="ltr">
-                *.db / autoSave
-              </span>
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'backup' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
-
-          {openSection === 'backup' && (
-            <div className="p-4 sm:p-5 space-y-5 animate-in fade-in duration-200">
-              {/* Active Engine Badge */}
-              <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-300 rounded-2xl p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-emerald-950">محرك التشغيل النشط المعتمد</span>
-                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
-                        Dexie IndexedDB (Single Source of Truth)
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-0.5">
-                      قاعدة بيانات سريعة ومحلية تدعم جميع الجداول والصور وسجل التغييرات الكامل دون انقطاع
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Last Backup Status Banner */}
-              <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-2 text-right">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Database className="h-4 w-4 text-teal-600" />
-                    حالة آخر نسخة احتياطية
-                  </span>
-                  {historicalBackups.length > 0 ? (
-                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      مؤمنة بالبصمة الرقمية
-                    </span>
+                  {latestAutoIsRecent ? (
+                    <CloudCheck className="h-4 w-4" />
                   ) : (
-                    <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      لا توجد نسخ محفوظة بعد
-                    </span>
+                    <Cloud className="h-4 w-4" />
                   )}
+                </span>
+                <span>النسخ التلقائي</span>
+                <ChevronLeft className="h-4 w-4 text-[var(--brand-primary)]" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveView('settings')}
+                className="h-11 w-11 rounded-full bg-[var(--brand-soft)] hover:bg-[var(--bg-hover)] text-[var(--brand-primary)] flex items-center justify-center transition cursor-pointer"
+                title="إعدادات المتجر والمظهر"
+                aria-label="إعدادات المتجر والمظهر"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* 2, 3, 4: Hero Status + Last Backup Time + Clear Primary Upload CTA */}
+          <div className="text-center space-y-5 py-2">
+            <div className="h-16 w-16 rounded-full bg-[var(--brand-soft)] text-[var(--brand-primary)] flex items-center justify-center mx-auto">
+              <Cloud className="h-8 w-8" />
+            </div>
+
+            {/* 2. Backup Status */}
+            <div className="space-y-1.5">
+              <div
+                className={`inline-flex items-center justify-center gap-2 app-section-title ${
+                  isSourceComplete ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'
+                }`}
+              >
+                {isSourceComplete ? (
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 shrink-0" />
+                )}
+                <span>
+                  {isSourceComplete
+                    ? 'حالة النسخ: النسخ الاحتياطي مكتمل'
+                    : 'حالة النسخ: يحتاج إلى إجراء'}
+                </span>
+              </div>
+
+              {/* 3. Last Backup Date & Time */}
+              <div className="app-meta-text app-num">
+                <span>آخر نسخة احتياطية: </span>
+                <span className="font-bold text-[var(--text-primary)]">
+                  {formatArabicDateTime(activeLastBackupAt)}
+                </span>
+              </div>
+
+              {backupSource === 'drive' && (driveState.account?.email || settings.driveAccountEmail) && (
+                <div className="text-[13px] text-[var(--text-muted)] flex items-center justify-center gap-2 pt-0.5">
+                  <span dir="ltr">{driveState.account?.email || settings.driveAccountEmail}</span>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    onClick={handleDisconnectGoogleDrive}
+                    disabled={driveLoading}
+                    className="text-[var(--color-danger)] hover:underline font-bold cursor-pointer inline-flex items-center gap-1 min-h-[36px]"
+                  >
+                    <Unlink className="h-3.5 w-3.5" />
+                    <span>فصل الحساب</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Clear Upload Backup Button */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handlePrimaryUpload}
+                disabled={isPrimaryActionBusy}
+                className="app-btn-primary w-full max-w-sm mx-auto rounded-2xl text-[16px] py-3.5 px-6 min-h-[52px]"
+              >
+                {isPrimaryActionBusy ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <UploadCloud className="h-5 w-5" />
+                )}
+                <span>رفع نسخة احتياطية</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 5. Saved Backups Section (Strict Source Isolation Tabs) */}
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="app-section-title text-[var(--brand-primary)]">النسخ المحفوظة</h2>
+
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 p-1 bg-[var(--bg-surface-subtle)] rounded-xl border border-[var(--border-default)] text-[13px]">
+                  <button
+                    type="button"
+                    onClick={() => setBackupSource('drive')}
+                    className={`px-3 min-h-[38px] rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                      backupSource === 'drive'
+                        ? 'bg-[var(--bg-surface)] text-[var(--brand-primary)] shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Google Drive
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackupSource('local')}
+                    className={`px-3 min-h-[38px] rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                      backupSource === 'local'
+                        ? 'bg-[var(--bg-surface)] text-[var(--brand-primary)] shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    محلية
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackupSource('firebase')}
+                    className={`px-3 min-h-[38px] rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                      backupSource === 'firebase'
+                        ? 'bg-[var(--bg-surface)] text-[var(--brand-primary)] shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    سحابية
+                  </button>
                 </div>
 
-                {historicalBackups.length > 0 ? (
-                  <div className="bg-white rounded-xl p-3 border border-slate-200/90 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between text-slate-700 font-medium">
-                      <span>تاريخ النسخة الأخيرة:</span>
-                      <span className="font-bold font-mono text-slate-900" dir="ltr">
-                        {new Date(historicalBackups[0].createdAt).toLocaleString('ar-SA')}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700 font-medium">
-                      <span>نوع النسخة والملف:</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                          historicalBackups[0].type === 'daily_auto'
-                            ? 'bg-blue-100 text-blue-800'
-                            : historicalBackups[0].type === 'pre_restore_safety'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          {historicalBackups[0].type === 'daily_auto'
-                            ? 'يومية تلقائية'
-                            : historicalBackups[0].type === 'pre_restore_safety'
-                            ? 'أمان قبل الاسترجاع'
-                            : 'يدوية'}
-                        </span>
-                        <span className="font-mono text-[11px] text-slate-600 truncate max-w-[180px]" dir="ltr">
-                          {historicalBackups[0].fileName}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700 font-medium">
-                      <span>إجمالي السجلات والحجم:</span>
-                      <span className="font-bold text-teal-700 font-mono">
-                        {historicalBackups[0].totalRecords} سجل • {(historicalBackups[0].sizeBytes / 1024).toFixed(1)} KB
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                      <span>بصمة التحقق (SHA-256):</span>
-                      <span className="font-mono font-bold text-slate-700 select-all" dir="ltr">
-                        {historicalBackups[0].checksum.substring(0, 16)}...
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    يُنصح بإنشاء أول نسخة احتياطية كاملة الآن لحفظ بياناتك في السجل التاريخي وتنزيلها على جهازك.
-                  </p>
+                {backupSource === 'drive' && driveState.tokenValid && (
+                  <button
+                    type="button"
+                    onClick={loadGoogleDriveBackupsOnly}
+                    disabled={driveLoading}
+                    className="h-11 w-11 rounded-full hover:bg-[var(--brand-soft)] text-[var(--brand-primary)] flex items-center justify-center transition cursor-pointer"
+                    title="تحديث القائمة"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${driveLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
+
+                {backupSource === 'firebase' && firebaseState.user && firebaseState.isTestProject && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      firebaseState.user && loadFirestoreBackupsOnly(firebaseState.user.uid)
+                    }
+                    disabled={firebaseLoading}
+                    className="h-11 w-11 rounded-full hover:bg-[var(--brand-soft)] text-[var(--brand-primary)] flex items-center justify-center transition cursor-pointer"
+                    title="تحديث القائمة"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${firebaseLoading ? 'animate-spin' : ''}`} />
+                  </button>
                 )}
               </div>
+            </div>
 
-              {/* Primary Actions for Dexie Full Backup */}
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => handleCreateDexieBackup('manual')}
-                  disabled={dexieBackupLoading}
-                  className="w-full flex items-center justify-center gap-3 rounded-2xl bg-teal-600 hover:bg-teal-700 py-3.5 px-4 text-base font-bold text-white shadow-md transition active:scale-98 disabled:opacity-60 cursor-pointer"
-                >
-                  {dexieBackupLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Download className="h-5 w-5" />
+            {/* 6. Backups List — Google Drive */}
+            {backupSource === 'drive' && (
+              <div>
+                {!driveState.tokenValid ? (
+                  <div className="py-8 text-center space-y-3">
+                    <p className="text-[15px] text-[var(--text-secondary)]">
+                      سجّل الدخول بحساب Google لعرض أو رفع النسخ الاحتياطية على Google Drive
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleConnectGoogleDrive}
+                      disabled={driveLoading}
+                      className="min-h-[44px] text-[15px] font-bold text-[var(--brand-primary)] py-2 px-5 rounded-xl bg-[var(--brand-soft)] hover:bg-[var(--bg-hover)] transition cursor-pointer"
+                    >
+                      {driveLoading ? 'جاري الاتصال...' : 'ربط حساب Google Drive'}
+                    </button>
+                  </div>
+                ) : driveBackups.length === 0 ? (
+                  <div className="py-8 text-center text-[15px] text-[var(--text-muted)]">
+                    لا توجد نسخ احتياطية محفوظة في Google Drive حتى الآن
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[var(--border-default)]">
+                    {driveBackups.map((file) => {
+                      const isBusy = driveBusyId === file.id || driveLoading;
+                      return (
+                        <div
+                          key={file.id}
+                          className="py-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                            <div className="h-10 w-10 rounded-full bg-[var(--brand-soft)] text-[var(--brand-primary)] flex items-center justify-center shrink-0">
+                              <Cloud className="h-5 w-5" />
+                            </div>
+                            <div className="overflow-hidden min-w-0">
+                              <div className="font-bold text-[var(--text-primary)] text-[15px] truncate" dir="ltr">
+                                {file.name}
+                              </div>
+                              <div className="app-meta-text app-num mt-0.5">
+                                {formatArabicDateTime(file.createdTime || null)}
+                                {file.size ? ` · ${(Number(file.size) / 1024).toFixed(0)} KB` : ''}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreFromGoogleDrive(file)}
+                              disabled={isBusy}
+                              className="px-3.5 py-2 min-h-[44px] rounded-xl bg-[var(--brand-soft)] hover:bg-[var(--bg-hover)] text-[var(--brand-soft-text)] text-[14px] font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {driveBusyId === file.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4" />
+                              )}
+                              <span>استعادة</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDriveBackup(file)}
+                              disabled={isBusy}
+                              className="px-3.5 py-2 min-h-[44px] rounded-xl hover:bg-[var(--color-danger-bg)] text-[var(--color-danger)] text-[14px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span>حذف</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 6. Backups List — Local Device */}
+            {backupSource === 'local' && (
+              <div>
+                {historicalBackups.length === 0 ? (
+                  <div className="py-8 text-center text-[15px] text-[var(--text-muted)]">
+                    لا توجد نسخ محلية محفوظة على هذا الجهاز حتى الآن
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[var(--border-default)]">
+                    {historicalBackups.map((item) => (
+                      <div
+                        key={item.id}
+                        className="py-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                          <div className="h-10 w-10 rounded-full bg-[var(--brand-soft)] text-[var(--brand-primary)] flex items-center justify-center shrink-0">
+                            <HardDrive className="h-5 w-5" />
+                          </div>
+                          <div className="overflow-hidden min-w-0">
+                            <div className="font-bold text-[var(--text-primary)] text-[15px] truncate">
+                              {item.type === 'daily_auto'
+                                ? 'نسخة تلقائية'
+                                : item.type === 'pre_restore_safety'
+                                  ? 'نسخة أمان قبل الاستعادة'
+                                  : 'نسخة محلية يدوية'}
+                            </div>
+                            <div className="app-meta-text app-num mt-0.5">
+                              {formatArabicDateTime(item.createdAt)} · {item.totalRecords} سجل
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreHistorical(item)}
+                            disabled={dexieBackupLoading}
+                            className="px-3.5 py-2 min-h-[44px] rounded-xl bg-[var(--brand-soft)] hover:bg-[var(--bg-hover)] text-[var(--brand-soft-text)] text-[14px] font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            <span>استعادة</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHistorical(item)}
+                            disabled={dexieBackupLoading}
+                            className="px-3.5 py-2 min-h-[44px] rounded-xl hover:bg-[var(--color-danger-bg)] text-[var(--color-danger)] text-[14px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span>حذف</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 6. Backups List — Firebase Cloud (Isolated Test Project) */}
+            {backupSource === 'firebase' && (
+              <div>
+                {!firebaseState.user || !firebaseState.isTestProject ? (
+                  <div className="py-8 text-center space-y-3">
+                    <p className="text-[15px] text-[var(--text-secondary)]">
+                      {!firebaseState.isTestProject
+                        ? 'فعّل المشروع الاختباري من الإعدادات للوصول إلى اللقطات السحابية'
+                        : 'سجّل الدخول إلى Firebase لعرض اللقطات المحفوظة'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        firebaseState.isTestProject
+                          ? handleConnectFirebase()
+                          : setActiveView('settings')
+                      }
+                      className="min-h-[44px] text-[15px] font-bold text-[var(--brand-primary)] py-2 px-5 rounded-xl bg-[var(--brand-soft)] hover:bg-[var(--bg-hover)] transition cursor-pointer"
+                    >
+                      {firebaseState.isTestProject ? 'تسجيل دخول Firebase' : 'فتح الإعدادات'}
+                    </button>
+                  </div>
+                ) : firestoreBackups.length === 0 ? (
+                  <div className="py-8 text-center text-[15px] text-[var(--text-muted)]">
+                    لا توجد لقطات سحابية محفوظة حالياً
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[var(--border-default)]">
+                    {firestoreBackups.map((item) => (
+                      <div
+                        key={item.id}
+                        className="py-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                          <div className="h-10 w-10 rounded-full bg-[var(--brand-soft)] text-[var(--brand-primary)] flex items-center justify-center shrink-0">
+                            <Cloud className="h-5 w-5" />
+                          </div>
+                          <div className="overflow-hidden min-w-0">
+                            <div className="font-bold text-[var(--text-primary)] text-[15px] truncate">
+                              {item.fileName}
+                            </div>
+                            <div className="app-meta-text app-num mt-0.5">
+                              {formatArabicDateTime(item.createdAt || null)} ·{' '}
+                              {item.totalProducts || 0} صنف
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreFromFirestore(item)}
+                            disabled={firebaseLoading}
+                            className="px-3.5 py-2 min-h-[44px] rounded-xl bg-[var(--brand-soft)] hover:bg-[var(--bg-hover)] text-[var(--brand-soft-text)] text-[14px] font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            <span>استعادة</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFirestoreBackup(item)}
+                            disabled={firebaseLoading}
+                            className="px-3.5 py-2 min-h-[44px] rounded-xl hover:bg-[var(--color-danger-bg)] text-[var(--color-danger)] text-[14px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span>حذف</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 7. Optional Collapsible Technical Inspection & File Tools Section */}
+          <div className="pt-4 border-t border-[var(--border-default)]">
+            <button
+              type="button"
+              onClick={() => setShowTechnicalDetails((v) => !v)}
+              className="w-full min-h-[44px] py-2.5 flex items-center justify-between text-[14px] font-bold text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                <span>خيارات الملفات وتفاصيل الفحص الفني (اختياري)</span>
+              </span>
+              {showTechnicalDetails ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+
+            {showTechnicalDetails && (
+              <div className="pt-4 space-y-5 text-[14px]">
+                {/* File Import/Export Utilities */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => dexieFileInputRef.current?.click()}
+                    disabled={dexieBackupLoading}
+                    className="app-btn-secondary justify-center text-[14px]"
+                  >
+                    <FolderOpen className="h-4 w-4 text-[var(--brand-primary)]" />
+                    <span>استيراد نسخة JSON من الجهاز</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportSqliteFile}
+                    disabled={fileLoading}
+                    className="app-btn-secondary justify-center text-[14px]"
+                  >
+                    <Download className="h-4 w-4 text-[var(--brand-primary)]" />
+                    <span>تصدير نسخة SQLite (.db)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sqliteFileInputRef.current?.click()}
+                    disabled={fileLoading}
+                    className="app-btn-secondary justify-center text-[14px]"
+                  >
+                    <RotateCcw className="h-4 w-4 text-[var(--brand-primary)]" />
+                    <span>استيراد ملف SQLite (.db)</span>
+                  </button>
+                  {historicalBackups[0] && (
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadHistorical(historicalBackups[0])}
+                      className="app-btn-secondary justify-center text-[14px]"
+                    >
+                      <Download className="h-4 w-4 text-[var(--brand-primary)]" />
+                      <span>تنزيل آخر نسخة محلية</span>
+                    </button>
                   )}
-                  <div className="text-center">
-                    <div>إنشاء نسخة احتياطية كاملة لقاعدة Dexie (تنزيل وحفظ تاريخي)</div>
-                    <div className="text-[11px] text-teal-100 font-normal">
-                      تشمل جميع الجداول الـ 12، صور المنتجات، والعلاقات، وسجل التغييرات الكامل
-                    </div>
-                  </div>
-                </button>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => dexieFileInputRef.current?.click()}
-                  disabled={dexieBackupLoading}
-                  className="w-full flex items-center justify-center gap-3 rounded-2xl bg-slate-800 hover:bg-slate-900 py-3.5 px-4 text-base font-bold text-white shadow-md transition active:scale-98 disabled:opacity-60 cursor-pointer"
-                >
-                  <RotateCcw className="h-5 w-5 text-teal-400" />
-                  <div className="text-center">
-                    <div>استرجاع نسخة احتياطية من ملف (مع الفحص في Sandbox)</div>
-                    <div className="text-[11px] text-slate-300 font-normal">
-                      يتم اختبار سلامة الملف والبصمة في قاعدة تجريبية معزولة قبل أي استبدال
+                {/* Read-only Sandbox Checks for Drive Files */}
+                {driveState.tokenValid && driveBackups.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="font-bold text-[var(--text-primary)]">فحص نسخ Google Drive في Sandbox (قراءة فقط):</div>
+                    <div className="space-y-2">
+                      {driveBackups.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between gap-2 bg-[var(--bg-surface-subtle)] border border-[var(--border-default)] rounded-xl px-3.5 py-2.5"
+                        >
+                          <span className="font-mono text-[12px] text-[var(--text-primary)] truncate" dir="ltr">
+                            {file.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyDriveBackup(file)}
+                            disabled={driveBusyId !== null || driveLoading}
+                            className="text-[var(--brand-primary)] hover:underline font-bold shrink-0 cursor-pointer min-h-[36px]"
+                          >
+                            {driveBusyId === file.id ? 'جاري الفحص...' : 'فحص Sandbox'}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </button>
+                )}
+
+                {/* Technical Verification Report */}
+                {driveVerificationResult && (
+                  <div className="app-card-subtle p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[var(--text-primary)]">
+                        تقرير الفحص الفني (Sandbox)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDriveVerificationResult(null)}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer font-bold"
+                      >
+                        إخفاء
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[12px] bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-3">
+                      <div className="font-mono break-all" dir="ltr">
+                        id: {driveVerificationResult.fileId}
+                      </div>
+                      <div className="font-mono break-all" dir="ltr">
+                        mimeType: {driveVerificationResult.mimeType || 'N/A'}
+                      </div>
+                      <div className="font-mono" dir="ltr">
+                        format: {driveVerificationResult.format} · {driveVerificationResult.sizeBytes} B
+                      </div>
+                      <div className="font-mono" dir="ltr">
+                        records: {driveVerificationResult.totalRecords}
+                      </div>
+                      <div className="font-mono break-all" dir="ltr">
+                        parents: {driveVerificationResult.parents?.join(', ') || 'N/A'}
+                      </div>
+                      <div className="font-mono break-all" dir="ltr">
+                        md5: {driveVerificationResult.md5Checksum || 'N/A'}
+                      </div>
+                    </div>
+
+                    {driveVerificationResult.computedSha256 && (
+                      <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-3 space-y-1">
+                        <div className="font-bold text-[var(--text-primary)]">
+                          حالة SHA-256: {driveVerificationResult.sha256Status}
+                        </div>
+                        <div className="font-mono text-[11px] text-[var(--text-muted)] break-all" dir="ltr">
+                          {driveVerificationResult.computedSha256}
+                        </div>
+                      </div>
+                    )}
+
+                    {driveVerificationResult.tables.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {driveVerificationResult.tables.map((t) => (
+                          <div
+                            key={t.name}
+                            className="flex items-center justify-between bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-[12px]"
+                          >
+                            <span className="font-mono truncate" dir="ltr">
+                              {t.name}
+                            </span>
+                            <span className="font-mono font-bold">{t.rows}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {driveVerificationResult.error && (
+                      <div className="bg-[var(--color-danger-bg)] text-[var(--color-danger)] border border-[var(--color-danger-border)] rounded-xl p-2.5 space-y-1">
+                        <div className="font-bold">
+                          {driveVerificationResult.httpStatus
+                            ? `HTTP ${driveVerificationResult.httpStatus} · `
+                            : ''}
+                          {driveVerificationResult.driveErrorReason
+                            ? `${driveVerificationResult.driveErrorReason}: `
+                            : ''}
+                          {driveVerificationResult.error}
+                        </div>
+                        {driveVerificationResult.driveRawErrorMessage && (
+                          <div className="font-mono text-[11px] break-all" dir="ltr">
+                            {driveVerificationResult.driveRawErrorMessage}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <input
                   ref={dexieFileInputRef}
@@ -1291,548 +1570,43 @@ export const BackupScreen: React.FC = () => {
                   onChange={handleDexieFileChange}
                   className="hidden"
                 />
-              </div>
-
-              {/* Historical Backups List */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200/90 overflow-hidden">
-                <div className="p-3.5 bg-slate-100/90 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FolderArchive className="h-4 w-4 text-teal-700" />
-                    <span className="text-xs font-black text-slate-900">
-                      سجل النسخ الاحتياطية التاريخية المحفوظة ({historicalBackups.length})
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-slate-500 font-medium">الاحتفاظ بآخر 10 نسخ تلقائياً</span>
-                </div>
-
-                {historicalBackups.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400 space-y-1">
-                    <FolderArchive className="h-8 w-8 mx-auto text-slate-300 stroke-1" />
-                    <p>لا توجد نسخ تاريخية محفوظة محلياً حتى الآن</p>
-                    <p className="text-[11px] text-slate-400">
-                      عند إنشاء نسخة أو أخذ نسخة يومية تلقائياً، ستظهر هنا للإدارة والاسترجاع السريع
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-200/70 max-h-80 overflow-y-auto">
-                    {historicalBackups.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-3 flex items-center justify-between gap-2 hover:bg-white transition"
-                      >
-                        <div className="overflow-hidden space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-xs font-mono truncate max-w-[220px]" dir="ltr">
-                              {item.fileName}
-                            </span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm shrink-0 ${
-                              item.type === 'daily_auto'
-                                ? 'bg-blue-100 text-blue-800'
-                                : item.type === 'pre_restore_safety'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {item.type === 'daily_auto'
-                                ? 'يومية تلقائية'
-                                : item.type === 'pre_restore_safety'
-                                ? 'نسخة أمان'
-                                : 'يدوية'}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                            <span>{new Date(item.createdAt).toLocaleString('ar-SA')}</span>
-                            <span>•</span>
-                            <span className="font-bold text-teal-700">{item.totalRecords} سجل</span>
-                            <span>•</span>
-                            <span>{(item.sizeBytes / 1024).toFixed(1)} KB</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadHistorical(item)}
-                            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                            title="تنزيل الملف على الجهاز"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreHistorical(item)}
-                            disabled={dexieBackupLoading}
-                            className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                            title="استرجاع آمن لهذه النسخة"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                            <span>استرجاع</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteHistorical(item.id, item.fileName)}
-                            className="p-2 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                            title="حذف من السجل"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Legacy SQLite .db Export / Import Section for Backwards Compatibility */}
-              <div className="border-t border-slate-200 pt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                    <HardDrive className="h-4 w-4 text-slate-500" />
-                    التوافق مع ملفات SQLite السابقة (.db)
-                  </span>
-                  <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md" dir="ltr">
-                    data (autoSave)*.db
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  إذا كان لديك ملفات سابقة بصيغة SQLite أو تريد تصدير ملف متوافق مع البرامج الخارجية:
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleExportBackup('db', false)}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 py-2.5 px-3 text-xs font-bold transition cursor-pointer border border-slate-200"
-                  >
-                    <Database className="h-4 w-4 text-teal-700" />
-                    <span>تصدير ملف SQLite (.db)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 py-2.5 px-3 text-xs font-bold transition cursor-pointer border border-slate-200"
-                  >
-                    <RotateCcw className="h-4 w-4 text-teal-700" />
-                    <span>استيراد ملف SQLite (.db)</span>
-                  </button>
-                </div>
-
                 <input
-                  ref={fileInputRef}
+                  ref={sqliteFileInputRef}
                   type="file"
                   accept=".db,.sqlite,.sqlite3,application/x-sqlite3,application/octet-stream,*/*"
-                  onChange={handleFileChange}
+                  onChange={handleSqliteFileChange}
                   className="hidden"
                 />
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+      )}
 
-        {/* 6. المزامنة السحابية (Google Drive & Firebase) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('cloud')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'cloud' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <div className="h-11 w-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                <Cloud className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">Google Drive & Firebase السحابي</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">حفظ واسترجاع النسخ السحابية عبر حساب Google</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              {currentUser ? (
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                  <Check className="h-3.5 w-3.5" />
-                  متصل
-                </span>
-              ) : (
-                <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
-                  غير متصل
-                </span>
-              )}
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'cloud' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
-
-          {openSection === 'cloud' && (
-            <div className="p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
-              {currentUser ? (
-                /* Signed In User View */
-                <div className="space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                  {/* Account Card Header */}
-                  <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
-                    <div className="flex items-center gap-3">
-                      {currentUser.photoURL ? (
-                        <img
-                          src={currentUser.photoURL}
-                          alt={currentUser.displayName || ''}
-                          className="h-10 w-10 rounded-full border border-slate-300 object-cover shadow-xs shrink-0"
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-700 to-indigo-500 text-white font-black flex items-center justify-center text-sm shadow-xs shrink-0">
-                          {currentUser.displayName ? currentUser.displayName[0] : 'G'}
-                        </div>
-                      )}
-                      <div className="overflow-hidden">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-900 text-sm truncate">
-                            {currentUser.displayName || 'مستخدم Google'}
-                          </h4>
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-sm">
-                            Google Drive نشط
-                          </span>
-                        </div>
-                        <span className="text-xs text-slate-500 font-mono block truncate" dir="ltr">
-                          {currentUser.email}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignOut}
-                      className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 text-xs font-bold transition shrink-0 cursor-pointer"
-                      title="تسجيل الخروج"
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      <span>خروج</span>
-                    </button>
-                  </div>
-
-                  {/* Service Tab Switcher (Google Drive vs Firebase Firestore) */}
-                  <div className="grid grid-cols-2 gap-2 bg-slate-200/80 p-1 rounded-xl text-xs font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setActiveCloudTab('drive')}
-                      className={`py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-                        activeCloudTab === 'drive'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <HardDrive className="h-4 w-4 text-amber-500" />
-                      <span>Google Drive ({driveBackups.length})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveCloudTab('firestore')}
-                      className={`py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-                        activeCloudTab === 'firestore'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <Database className="h-4 w-4 text-orange-500" />
-                      <span>Firebase Firestore ({firestoreBackups.length})</span>
-                    </button>
-                  </div>
-
-                  {/* TAB 1: Google Drive Backups */}
-                  {activeCloudTab === 'drive' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={handleBackupToGoogleDrive}
-                          disabled={cloudLoading}
-                          className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition active:scale-98 disabled:opacity-60 cursor-pointer"
-                        >
-                          {cloudLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <UploadCloud className="h-4 w-4" />
-                          )}
-                          <span>رفع نسخة احتياطية جديدة إلى Google Drive</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => currentUser && loadCloudBackups(currentUser)}
-                          disabled={cloudLoading}
-                          className="p-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 transition cursor-pointer"
-                          title="تحديث قائمة الملفات"
-                        >
-                          <RefreshCw className={`h-4 w-4 ${cloudLoading ? 'animate-spin' : ''}`} />
-                        </button>
-                      </div>
-
-                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                        <div className="p-2.5 bg-slate-50 text-[11px] font-bold text-slate-500 flex items-center justify-between">
-                          <span>النسخ المحفوظة على Google Drive</span>
-                          <span className="font-mono">مجلد: Cashier_Backups</span>
-                        </div>
-
-                        {driveBackups.length === 0 ? (
-                          <div className="p-6 text-center text-xs text-slate-400 space-y-1">
-                            <FolderArchive className="h-8 w-8 mx-auto text-slate-300 stroke-1" />
-                            <p>لا توجد نسخ احتياطية محفوظة على Google Drive حتى الآن</p>
-                            <p className="text-[11px] text-slate-400">انقر على الزر أعلاه لحفظ أول نسخة الآن</p>
-                          </div>
-                        ) : (
-                          driveBackups.map((file) => (
-                            <div
-                              key={file.id}
-                              className="p-3 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition"
-                            >
-                              <div className="overflow-hidden">
-                                <h5 className="font-bold text-slate-800 text-xs truncate font-mono" dir="ltr">
-                                  {file.name}
-                                </h5>
-                                <span className="text-[11px] text-slate-400 block mt-0.5">
-                                  {file.createdTime
-                                    ? new Date(file.createdTime).toLocaleString('ar-EG')
-                                    : 'تاريخ غير متوفر'}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRestoreFromGoogleDrive(file)}
-                                  disabled={cloudLoading}
-                                  className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                                >
-                                  <RotateCcw className="h-3 w-3" />
-                                  <span>استرجاع</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteDriveBackup(file)}
-                                  disabled={cloudLoading}
-                                  className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                                  title="حذف من Google Drive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* TAB 2: Firebase Firestore Backups */}
-                  {activeCloudTab === 'firestore' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={handleBackupToFirestore}
-                          disabled={cloudLoading}
-                          className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition active:scale-98 disabled:opacity-60 cursor-pointer"
-                        >
-                          {cloudLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Database className="h-4 w-4" />
-                          )}
-                          <span>حفظ لقطة سحابية على Firebase Firestore</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => currentUser && loadCloudBackups(currentUser)}
-                          disabled={cloudLoading}
-                          className="p-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 transition cursor-pointer"
-                          title="تحديث قائمة Firestore"
-                        >
-                          <RefreshCw className={`h-4 w-4 ${cloudLoading ? 'animate-spin' : ''}`} />
-                        </button>
-                      </div>
-
-                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                        <div className="p-2.5 bg-slate-50 text-[11px] font-bold text-slate-500 flex items-center justify-between">
-                          <span>النسخ المحفوظة على قاعدة بيانات Firestore</span>
-                          <span className="font-mono">Collection: users/{currentUser.uid.slice(0, 8)}...</span>
-                        </div>
-
-                        {firestoreBackups.length === 0 ? (
-                          <div className="p-6 text-center text-xs text-slate-400 space-y-1">
-                            <Database className="h-8 w-8 mx-auto text-slate-300 stroke-1" />
-                            <p>لا توجد لقطات محفوظة في Firestore حتى الآن</p>
-                            <p className="text-[11px] text-slate-400">احفظ نسخة فورية مشفرة بضغطة زر واحدة</p>
-                          </div>
-                        ) : (
-                          firestoreBackups.map((item) => (
-                            <div
-                              key={item.id}
-                              className="p-3 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition"
-                            >
-                              <div className="overflow-hidden">
-                                <h5 className="font-bold text-slate-800 text-xs truncate">
-                                  {item.fileName}
-                                </h5>
-                                <span className="text-[11px] text-slate-400 block mt-0.5">
-                                  {item.createdAt
-                                    ? new Date(item.createdAt).toLocaleString('ar-EG')
-                                    : ''}{' '}
-                                  • {item.totalProducts || 0} صنف • {item.totalInvoices || 0} فاتورة
-                                </span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRestoreFromFirestore(item)}
-                                  disabled={cloudLoading}
-                                  className="px-2.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                                >
-                                  <RotateCcw className="h-3 w-3" />
-                                  <span>استرجاع</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteFirestoreBackup(item)}
-                                  disabled={cloudLoading}
-                                  className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                                  title="حذف من Firestore"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Signed Out State - Official Sign in with Google Button */
-                <div className="space-y-4 bg-gradient-to-br from-slate-50 to-amber-50/40 p-5 rounded-2xl border border-slate-200">
-                  <div className="flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-                      <Cloud className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h4 className="font-black text-slate-900 text-sm">المزامنة مع Google Drive و Firebase</h4>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        قم بتسجيل الدخول بحساب Google لحفظ واسترجاع فواتيرك ومنتجاتك مباشرة على Google Drive وقاعدة بيانات Firebase السحابية، وضمان عدم ضياع أي بيانات عند تغيير الهاتف أو المتصفح.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Official Google Sign-In Button */}
-                  <div className="flex justify-center pt-2">
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      disabled={cloudLoading}
-                      className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 hover:border-slate-300 shadow-md font-bold text-sm transition active:scale-98 disabled:opacity-60 cursor-pointer"
-                    >
-                      {cloudLoading ? (
-                        <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
-                      ) : (
-                        <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
-                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                        </svg>
-                      )}
-                      <span>تسجيل الدخول بحساب Google</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 7. أيقونة التطبيق الرسمية */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
-          <button
-            type="button"
-            onClick={() => toggleSection('app_info')}
-            className={`w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right cursor-pointer transition ${
-              openSection === 'app_info' ? 'bg-slate-50/80 border-b border-slate-200/80' : 'hover:bg-slate-50/60'
-            }`}
-          >
-            <div className="flex items-center gap-3.5 overflow-hidden">
-              <img
-                src="/app-icon.svg"
-                alt="أيقونة كاشير POS"
-                className="h-11 w-11 rounded-2xl border border-slate-200 p-0.5 object-contain shrink-0 shadow-xs"
-              />
-              <div>
-                <h3 className="font-black text-slate-900 text-sm sm:text-base">أيقونة التطبيق الرسمية</h3>
-                <p className="text-xs text-slate-500 truncate mt-0.5">معلومات وهوية التطبيق المعتمدة</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full hidden sm:inline-block">
-                أيقونة معتمدة
-              </span>
-              <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                {openSection === 'app_info' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </div>
-          </button>
-
-          {openSection === 'app_info' && (
-            <div className="p-4 sm:p-5 animate-in fade-in duration-200">
-              <div className="bg-gradient-to-r from-[#1e4663] to-[#16354b] p-5 rounded-2xl text-white shadow-md flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <img
-                    src="/app-icon.svg"
-                    alt="أيقونة كاشير POS"
-                    className="h-16 w-16 rounded-2xl shadow-lg border border-white/20 bg-white/10 p-1 object-contain shrink-0"
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-slate-900 px-2 py-0.5 rounded-full">
-                        أيقونة معتمدة
-                      </span>
-                      <span className="text-xs text-cyan-200 font-medium">512×512 HD</span>
-                    </div>
-                    <h4 className="font-black text-lg text-white mt-0.5">أيقونة التطبيق الرسمية</h4>
-                    <p className="text-xs text-slate-200 leading-snug">
-                      مصممة بجودة عالية ثلاثية الأبعاد لنقاط البيع ومتوافقة مع شاشات الهواتف والمتصفح
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Mandatory User Confirmation Dialog for Destructive Operations */}
+      {/* Mandatory User Confirmation Dialog Before Restore or Delete */}
       {confirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-3xl bg-white text-slate-900 p-6 shadow-2xl space-y-4 border border-slate-200 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex bg-black/55 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto overscroll-contain">
+          <div className="m-auto w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
               <div
-                className={`h-11 w-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                className={`h-11 w-11 rounded-full flex items-center justify-center shrink-0 ${
                   confirmModal.isDanger
-                    ? 'bg-rose-100 text-rose-600'
-                    : 'bg-teal-100 text-teal-700'
+                    ? 'bg-[var(--color-danger-bg)] text-[var(--color-danger)]'
+                    : 'bg-[var(--brand-soft)] text-[var(--brand-primary)]'
                 }`}
               >
                 {confirmModal.isDanger ? (
-                  <AlertTriangle className="h-6 w-6" />
+                  <AlertTriangle className="h-5 w-5" />
                 ) : (
-                  <RotateCcw className="h-6 w-6" />
+                  <RotateCcw className="h-5 w-5" />
                 )}
               </div>
-              <h3 className="font-black text-base text-slate-900 leading-tight">
+              <h3 className="app-section-title text-[17px] leading-tight">
                 {confirmModal.title}
               </h3>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">
               {confirmModal.message}
             </p>
 
@@ -1840,18 +1614,14 @@ export const BackupScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs transition"
+                className="app-btn-secondary w-full"
               >
-                إلغاء الأمر
+                إلغاء
               </button>
               <button
                 type="button"
                 onClick={confirmModal.onConfirm}
-                className={`py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow-xs transition active:scale-98 ${
-                  confirmModal.isDanger
-                    ? 'bg-rose-600 hover:bg-rose-700'
-                    : 'bg-teal-600 hover:bg-teal-700'
-                }`}
+                className={confirmModal.isDanger ? 'app-btn-danger w-full' : 'app-btn-primary w-full'}
               >
                 {confirmModal.confirmText}
               </button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldCheck, Camera, HardDrive, Check, AlertTriangle, RefreshCw } from 'lucide-react';
-import { ScreenId } from './types';
+import { ScreenId, Invoice, StoreSettings } from './types';
 import { DB, StorageInitState } from './services/db';
 import {
   pushBackEntry,
@@ -8,7 +8,15 @@ import {
   triggerStepBack,
   onRootExitPrompt,
 } from './services/navigation';
+import { clearInvoiceDraft, getActiveEditInvoice } from './utils/invoiceDraftStore';
+import {
+  createViewportTrackerState,
+  evaluateKeyboardViewport,
+  isEditableTextControl,
+  shouldScrollFocusedElement,
+} from './utils/mobileViewport';
 import { Navbar } from './components/Navbar';
+import { DesktopSidebar } from './components/DesktopSidebar';
 import { HomeScreen } from './screens/HomeScreen';
 import { InvoiceScreen } from './screens/InvoiceScreen';
 import { ProductsScreen } from './screens/ProductsScreen';
@@ -25,6 +33,13 @@ export default function App() {
 
   const [screenStack, setScreenStack] = useState<ScreenId[]>(['home']);
   const screenEntriesRef = useRef<ReturnType<typeof pushBackEntry>[]>([]);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  // Store settings reactive state for DesktopSidebar & theme toggle
+  const [settings, setSettings] = useState<StoreSettings>(() => DB.getSettings());
+
+  // Mobile virtual keyboard visibility state (helps keep active inputs visible)
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   // Double-tap-to-exit toast state
   const [exitToastVisible, setExitToastVisible] = useState(false);
@@ -36,6 +51,13 @@ export default function App() {
   );
 
   const currentScreen = screenStack[screenStack.length - 1] || 'home';
+  const [editingInvoicesByType, setEditingInvoicesByType] = useState<{
+    sale: Invoice | null;
+    purchase: Invoice | null;
+  }>(() => ({
+    sale: getActiveEditInvoice('sale'),
+    purchase: getActiveEditInvoice('purchase'),
+  }));
 
   const handleNavigate = useCallback((nextScreen: ScreenId) => {
     setScreenStack((prev) => {
@@ -60,12 +82,45 @@ export default function App() {
     });
   }, []);
 
+  const handleStartEditInvoice = useCallback(
+    (invoice: Invoice) => {
+      const targetType = invoice.type === 'purchase' ? 'purchase' : 'sale';
+      setEditingInvoicesByType((prev) => ({
+        ...prev,
+        [targetType]: invoice,
+      }));
+      handleNavigate(targetType);
+    },
+    [handleNavigate]
+  );
+
   const handleStepBack = useCallback(() => {
     const handled = triggerStepBack();
     if (!handled && currentScreen !== 'home') {
       handleNavigate('home');
     }
   }, [currentScreen, handleNavigate]);
+
+  const handleFinishOrCancelEdit = useCallback(
+    (invoiceType: 'sale' | 'purchase') => {
+      clearInvoiceDraft(invoiceType, 'edit');
+      setEditingInvoicesByType((prev) => ({
+        ...prev,
+        [invoiceType]: null,
+      }));
+      handleStepBack();
+    },
+    [handleStepBack]
+  );
+
+  const handleToggleTheme = useCallback(async () => {
+    const nextTheme = settings.theme === 'dark' ? 'light' : 'dark';
+    try {
+      await DB.saveSettings({ theme: nextTheme });
+    } catch (err) {
+      console.error('Failed to toggle theme:', err);
+    }
+  }, [settings.theme]);
 
   // Subscribe to root exit prompt (1st tap on Back button at Home screen)
   useEffect(() => {
@@ -134,7 +189,7 @@ export default function App() {
     setShowFirstTimePermissions(false);
   };
 
-  // Disable automatic browser scroll restoration and always start every screen from the very top
+  // Disable automatic browser scroll restoration and reset ONLY the inner scroll region on screen change
   useEffect(() => {
     if ('scrollRestoration' in window.history) {
       window.history.scrollRestoration = 'manual';
@@ -145,27 +200,124 @@ export default function App() {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTop = 0;
+    }
   }, [currentScreen]);
+
+  // Mobile keyboard handling: orientation-aware detection & smooth scroll only when focused control is obscured
+  useEffect(() => {
+    let viewportTracker = createViewportTrackerState(
+      window.innerWidth,
+      window.visualViewport?.height || window.innerHeight
+    );
+    let scrollTimer: number | null = null;
+    let blurTimer: number | null = null;
+    let focusedEl: HTMLElement | null = null;
+
+    const getVisualHeight = (): number => window.visualViewport?.height || window.innerHeight;
+
+    const scheduleEnsureVisible = (target: HTMLElement, delayMs: number) => {
+      if (scrollTimer !== null) {
+        window.clearTimeout(scrollTimer);
+      }
+      scrollTimer = window.setTimeout(() => {
+        scrollTimer = null;
+        if (!document.contains(target) || document.activeElement !== target) return;
+        const rect = target.getBoundingClientRect();
+        if (shouldScrollFocusedElement(rect, getVisualHeight())) {
+          target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }, delayMs);
+    };
+
+    const handleFocusIn = (e: FocusEvent) => {
+      if (blurTimer !== null) {
+        window.clearTimeout(blurTimer);
+        blurTimer = null;
+      }
+      if (window.innerWidth < 1024 && isEditableTextControl(e.target) && e.target instanceof HTMLElement) {
+        focusedEl = e.target;
+        setIsKeyboardOpen(true);
+        scheduleEnsureVisible(e.target, 220);
+      }
+    };
+
+    const handleFocusOut = () => {
+      if (blurTimer !== null) {
+        window.clearTimeout(blurTimer);
+      }
+      blurTimer = window.setTimeout(() => {
+        blurTimer = null;
+        if (!isEditableTextControl(document.activeElement)) {
+          focusedEl = null;
+          setIsKeyboardOpen(false);
+        }
+      }, 140);
+    };
+
+    const handleViewportChange = () => {
+      const hasFocused = isEditableTextControl(document.activeElement);
+      const result = evaluateKeyboardViewport(viewportTracker, {
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        visualHeight: getVisualHeight(),
+        hasFocusedTextControl: hasFocused,
+        isMobileLayout: window.innerWidth < 1024,
+      });
+      viewportTracker = result.nextState;
+      setIsKeyboardOpen(result.keyboardOpen);
+
+      if (
+        !result.orientationChanged &&
+        result.keyboardOpen &&
+        focusedEl &&
+        document.activeElement === focusedEl
+      ) {
+        scheduleEnsureVisible(focusedEl, 90);
+      }
+    };
+
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    window.visualViewport?.addEventListener('resize', handleViewportChange);
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('orientationchange', handleViewportChange);
+
+    return () => {
+      if (scrollTimer !== null) window.clearTimeout(scrollTimer);
+      if (blurTimer !== null) window.clearTimeout(blurTimer);
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('orientationchange', handleViewportChange);
+    };
+  }, []);
 
   // Apply font family, font size, and dark/light theme reactively from settings
   useEffect(() => {
     const applyAppearance = () => {
       const s = DB.getSettings();
+      setSettings(s);
       const root = document.documentElement;
-      const isMobileViewport = window.innerWidth < 640;
-      const baseFontSize = s.fontSize || 15;
-      // Scale slightly on compact phone screens so all cards and tables fit without overflow
-      const effectiveFontSize = isMobileViewport ? Math.min(baseFontSize, 15) : baseFontSize;
+      const isCompact = window.innerWidth < 640;
+      const configuredSize = s.fontSize || 15;
+      // Preserve 16px clean baseline when fontSize is untouched default (15)
+      const baseFontSize = configuredSize === 15 ? 16 : configuredSize;
+      const effectiveFontSize = isCompact ? Math.min(baseFontSize, 16) : baseFontSize;
+
       root.style.setProperty('--app-font', `'${s.fontFamily || 'Cairo'}', sans-serif`);
       root.style.fontSize = `${effectiveFontSize}px`;
-      root.style.setProperty('--products-font-size', `${s.productsFontSize || 14}px`);
+      root.style.setProperty('--products-font-size', `${s.productsFontSize || 15}px`);
+
+      const themeMeta = document.querySelector('meta[name="theme-color"]');
       if (s.theme === 'dark') {
         root.classList.add('dark');
+        themeMeta?.setAttribute('content', '#0d1626');
       } else {
         root.classList.remove('dark');
+        themeMeta?.setAttribute('content', '#1d5fd6');
       }
     };
 
@@ -201,9 +353,18 @@ export default function App() {
       case 'home':
         return '';
       case 'sale':
-        return 'فاتورة بيع جديدة';
+        return editingInvoicesByType.sale
+          ? `تعديل فاتورة بيع ${
+              editingInvoicesByType.sale.invoice_number || `#${editingInvoicesByType.sale.id}`
+            }`
+          : 'فاتورة بيع جديدة';
       case 'purchase':
-        return 'فاتورة شراء جديدة';
+        return editingInvoicesByType.purchase
+          ? `تعديل فاتورة شراء ${
+              editingInvoicesByType.purchase.invoice_number ||
+              `#${editingInvoicesByType.purchase.id}`
+            }`
+          : 'فاتورة شراء جديدة';
       case 'sale_return':
         return 'فاتورة مرتجع جديدة';
       case 'quote':
@@ -221,13 +382,15 @@ export default function App() {
       case 'invoices_return':
         return 'فواتير المرتجع';
       case 'invoices_quote':
-        return 'عروض الاسعار';
+        return 'عروض الأسعار';
       case 'accounts':
-        return 'ادارة الحسابات';
+        return 'إدارة الحسابات';
       case 'expenses':
         return 'المصروفات';
+      case 'settings':
+        return 'إعدادات المتجر';
       case 'backup':
-        return 'الإعدادات والنسخ الاحتياطي';
+        return 'النسخ الاحتياطي';
       default:
         return '';
     }
@@ -238,15 +401,45 @@ export default function App() {
       case 'home':
         return <HomeScreen onNavigate={handleNavigate} />;
       case 'sale':
-        return <InvoiceScreen type="sale" onBack={handleStepBack} onNavigate={handleNavigate} />;
+        return (
+          <InvoiceScreen
+            key={`sale:${editingInvoicesByType.sale?.id ?? 'new'}`}
+            type="sale"
+            onBack={handleStepBack}
+            onNavigate={handleNavigate}
+            editingInvoice={editingInvoicesByType.sale}
+            onCancelEdit={() => handleFinishOrCancelEdit('sale')}
+          />
+        );
       case 'purchase':
-        return <InvoiceScreen type="purchase" onBack={handleStepBack} onNavigate={handleNavigate} />;
+        return (
+          <InvoiceScreen
+            key={`purchase:${editingInvoicesByType.purchase?.id ?? 'new'}`}
+            type="purchase"
+            onBack={handleStepBack}
+            onNavigate={handleNavigate}
+            editingInvoice={editingInvoicesByType.purchase}
+            onCancelEdit={() => handleFinishOrCancelEdit('purchase')}
+          />
+        );
       case 'sale_return':
         return (
-          <InvoiceScreen type="sale_return" onBack={handleStepBack} onNavigate={handleNavigate} />
+          <InvoiceScreen
+            key="sale_return:new"
+            type="sale_return"
+            onBack={handleStepBack}
+            onNavigate={handleNavigate}
+          />
         );
       case 'quote':
-        return <InvoiceScreen type="quote" onBack={handleStepBack} onNavigate={handleNavigate} />;
+        return (
+          <InvoiceScreen
+            key="quote:new"
+            type="quote"
+            onBack={handleStepBack}
+            onNavigate={handleNavigate}
+          />
+        );
       case 'products':
         return <ProductsScreen />;
       case 'customers':
@@ -254,9 +447,9 @@ export default function App() {
       case 'suppliers':
         return <PartiesScreen type="supplier" />;
       case 'invoices_sale':
-        return <InvoicesListScreen type="sale" />;
+        return <InvoicesListScreen type="sale" onEditInvoice={handleStartEditInvoice} />;
       case 'invoices_purchase':
-        return <InvoicesListScreen type="purchase" />;
+        return <InvoicesListScreen type="purchase" onEditInvoice={handleStartEditInvoice} />;
       case 'invoices_return':
         return <InvoicesListScreen type="sale_return" />;
       case 'invoices_quote':
@@ -265,8 +458,10 @@ export default function App() {
         return <AccountsScreen />;
       case 'expenses':
         return <ExpensesScreen />;
+      case 'settings':
+        return <BackupScreen key="settings" initialView="settings" onExitView={handleStepBack} />;
       case 'backup':
-        return <BackupScreen />;
+        return <BackupScreen key="backup" initialView="backup" />;
       default:
         return <HomeScreen onNavigate={handleNavigate} />;
     }
@@ -275,14 +470,19 @@ export default function App() {
   // 1. Loading Gate (أثناء الفحص والتهيئة)
   if (initState === StorageInitState.INITIALIZING || initState === StorageInitState.UNINITIALIZED) {
     return (
-      <div dir="rtl" className="min-h-dvh bg-slate-900 flex flex-col items-center justify-center p-6 text-white text-center">
-        <div className="w-16 h-16 rounded-3xl bg-[#1e4663] border border-slate-700/80 flex items-center justify-center shadow-2xl mb-4 animate-pulse">
-          <HardDrive className="h-8 w-8 text-teal-400" />
+      <div
+        dir="rtl"
+        className="h-dvh w-full overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] flex flex-col items-center justify-center p-6 text-center"
+      >
+        <div className="w-16 h-16 rounded-2xl bg-[var(--brand-primary)] text-white flex items-center justify-center shadow-lg mb-4 animate-pulse">
+          <HardDrive className="h-8 w-8" />
         </div>
-        <h1 className="text-xl font-black mb-1 tracking-wide">Cashier Pro</h1>
-        <p className="text-xs text-slate-400 mb-6 font-medium">جاري فحص وتهيئة محرك التخزين وقاعدة البيانات...</p>
-        <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-          <div className="h-full bg-teal-500 rounded-full animate-pulse w-3/4" />
+        <h1 className="app-page-title mb-1.5">Cashier Pro</h1>
+        <p className="app-meta-text mb-6 font-semibold">
+          جاري فحص وتهيئة محرك التخزين وقاعدة البيانات...
+        </p>
+        <div className="w-52 h-2 bg-[var(--bg-surface-subtle)] rounded-full overflow-hidden border border-[var(--border-default)]">
+          <div className="h-full bg-[var(--brand-primary)] rounded-full animate-pulse w-3/4" />
         </div>
       </div>
     );
@@ -291,14 +491,18 @@ export default function App() {
   // 2. Error Gate (إذا فشلت التهيئة مع إمكانية إعادة المحاولة)
   if (initState === StorageInitState.FAILED) {
     return (
-      <div dir="rtl" className="min-h-dvh bg-slate-100 flex flex-col items-center justify-center p-6 text-slate-900 text-center">
-        <div className="max-w-md w-full bg-white rounded-3xl p-6 shadow-xl border border-red-100 space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+      <div
+        dir="rtl"
+        className="h-dvh w-full overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] flex flex-col items-center justify-center p-6 text-center"
+      >
+        <div className="max-w-md w-full app-card p-6 space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[var(--color-danger-bg)] text-[var(--color-danger)] flex items-center justify-center mx-auto">
             <AlertTriangle className="h-7 w-7" />
           </div>
-          <h2 className="text-base font-black text-slate-900">تعذر بدء تشغيل قاعدة البيانات</h2>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            {initError || 'حدث خطأ أثناء الاتصال بمحرك التخزين المحلي. يرجى التأكد من تفعيل التخزين في المتصفح أو إعادة المحاولة.'}
+          <h2 className="app-section-title">تعذر بدء تشغيل قاعدة البيانات</h2>
+          <p className="app-meta-text leading-relaxed">
+            {initError ||
+              'حدث خطأ أثناء الاتصال بمحرك التخزين المحلي. يرجى التأكد من تفعيل التخزين في المتصفح أو إعادة المحاولة.'}
           </p>
           <div className="pt-2">
             <button
@@ -315,7 +519,7 @@ export default function App() {
                   setInitError(DB.getLastStorageError()?.message || 'فشلت إعادة المحاولة');
                 }
               }}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#1e4663] hover:bg-[#16354b] text-white text-xs font-black shadow-md transition cursor-pointer"
+              className="app-btn-primary w-full"
             >
               <RefreshCw className="h-4 w-4" />
               <span>إعادة المحاولة</span>
@@ -327,8 +531,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-100/70 text-slate-900 flex flex-col selection:bg-slate-700 selection:text-white transition-colors duration-200">
-      {/* Top Navigation */}
+    <div
+      dir="rtl"
+      data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
+      className="h-dvh w-full overflow-hidden flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] selection:bg-[var(--brand-primary)] selection:text-white"
+    >
+      {/* Fixed Top Navigation Header */}
       <Navbar
         currentScreen={currentScreen}
         onNavigate={handleNavigate}
@@ -336,39 +544,50 @@ export default function App() {
         title={getScreenTitle(currentScreen)}
       />
 
-      {/* Main App Content - Mobile-First Container */}
-      <main key={currentScreen} className="flex-1 max-w-lg sm:max-w-2xl w-full mx-auto px-2.5 py-2.5 sm:p-4">
-        {renderScreen()}
-      </main>
+      {/* Fixed Shell Workspace Row: Desktop Sidebar + Single Inner Scrollable Content Area */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <DesktopSidebar
+          currentScreen={currentScreen}
+          onNavigate={handleNavigate}
+          settings={settings}
+          onToggleTheme={handleToggleTheme}
+        />
+
+        <main ref={mainScrollRef} className="app-scroll-region flex-1 min-h-0 min-w-0">
+          <div className="max-w-5xl mx-auto w-full px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-5">
+            {renderScreen()}
+          </div>
+        </main>
+      </div>
 
       {/* First-Time Only Permissions Modal (Shown once on first app install/launch) */}
       {showFirstTimePermissions && (
         <div
           dir="rtl"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto"
+          className="fixed inset-0 z-50 flex bg-black/60 p-3 sm:p-4 backdrop-blur-[2px] overflow-y-auto overscroll-contain"
         >
-          <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl space-y-3.5 text-right">
+          <div className="m-auto w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-default)] p-5 shadow-2xl space-y-4 text-right">
             <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-[#1e4663] text-white flex items-center justify-center shrink-0">
+              <div className="h-11 w-11 rounded-2xl bg-[var(--brand-primary)] text-white flex items-center justify-center shrink-0">
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm sm:text-base font-black text-slate-900">
+                <h3 className="text-[17px] font-extrabold text-[var(--text-primary)]">
                   منح أذونات التطبيق (لأول مرة فقط)
                 </h3>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[13px] text-[var(--text-secondary)]">
                   يتم طلب هذه الأذونات عند التثبيت لأول مرة فقط وتُحفظ الإعدادات تلقائياً بعدها
                 </p>
               </div>
             </div>
 
-            <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs">
-              <div className="flex items-center gap-2 text-slate-700 font-bold">
-                <Camera className="h-4 w-4 text-[#1e4663] shrink-0" />
+            <div className="space-y-2.5 bg-[var(--bg-surface-subtle)] p-3.5 rounded-xl border border-[var(--border-default)] text-[14px]">
+              <div className="flex items-center gap-2.5 text-[var(--text-primary)] font-semibold">
+                <Camera className="h-4 w-4 text-[var(--brand-primary)] shrink-0" />
                 <span>إذن الكاميرا لقراءة الباركود السريع للمنتجات</span>
               </div>
-              <div className="flex items-center gap-2 text-slate-700 font-bold">
-                <HardDrive className="h-4 w-4 text-[#1e4663] shrink-0" />
+              <div className="flex items-center gap-2.5 text-[var(--text-primary)] font-semibold">
+                <HardDrive className="h-4 w-4 text-[var(--brand-primary)] shrink-0" />
                 <span>إذن الذاكرة لحفظ الفواتير وملفات PDF والإعدادات تلقائياً</span>
               </div>
             </div>
@@ -376,7 +595,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleGrantFirstTimePermissions}
-              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#1e4663] hover:bg-[#16354b] py-3 px-4 text-xs sm:text-sm font-extrabold text-white shadow-md transition active:scale-98 cursor-pointer"
+              className="app-btn-primary w-full"
             >
               <Check className="h-4 w-4" />
               <span>سماح وحفظ الإعدادات تلقائياً</span>
@@ -389,27 +608,11 @@ export default function App() {
       {exitToastVisible && (
         <div
           dir="rtl"
-          className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 rounded-full bg-slate-900/90 text-white px-4 py-2 text-xs font-bold shadow-xl pointer-events-none whitespace-nowrap"
+          className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))] lg:bottom-8 left-1/2 -translate-x-1/2 z-50 rounded-full bg-[var(--text-primary)] text-[var(--bg-surface)] px-4 py-2 text-[13px] font-bold shadow-xl pointer-events-none whitespace-nowrap"
         >
           اضغط مرة أخرى للخروج من التطبيق
         </div>
       )}
-
-      {/* Bottom Footer Bar (Desktop only so mobile has full vertical space) */}
-      <footer className="hidden sm:block mt-auto border-t border-slate-200/80 bg-white py-2.5 px-4 text-xs text-slate-500 print:hidden">
-        <div className="max-w-2xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[#1e4663]">{DB.getSettings().storeName || 'Cashier'}</span>
-            <span aria-hidden="true">·</span>
-            <span>نظام إدارة المبيعات والمخازن</span>
-          </div>
-          <div className="flex items-center gap-3 text-slate-500">
-            <span>
-              اختصارات لوحة المفاتيح: <kbd className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">F1</kbd> بيع · <kbd className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">F2</kbd> شراء
-            </span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

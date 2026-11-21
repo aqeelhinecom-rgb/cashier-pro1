@@ -449,6 +449,7 @@ export class StorageCacheAdapter {
     notes?: string;
     date?: string;
     customInvoiceNumber?: string;
+    originalInvoiceId?: number;
   }): Promise<Invoice> {
     return this.enqueueWrite(async () => {
       const {
@@ -496,6 +497,81 @@ export class StorageCacheAdapter {
 
       this.notifyListeners();
       this.broadcastChange('invoices', 'create', invoice.id);
+      return invoice;
+    });
+  }
+
+  async canEditInvoice(id: number): Promise<{ canEdit: boolean; reason?: string; invoice?: Invoice }> {
+    this.assertReady('canEditInvoice');
+    return this.storageService.invoices.canEditInvoice(id);
+  }
+
+  async updateInvoice(params: {
+    invoiceId: number;
+    partyId?: number | null;
+    items: Omit<InvoiceItem, 'id' | 'invoice_id'>[];
+    discount: number;
+    paid: number;
+    currency?: string;
+    notes?: string;
+    editIdempotencyKey?: string;
+    actorRole?: 'owner' | 'admin' | 'manager' | 'cashier';
+  }): Promise<Invoice> {
+    return this.enqueueWrite(async () => {
+      const {
+        invoice,
+        items: updatedItems,
+        deduplicated,
+        stockChanges,
+      } = await this.storageService.invoices.updateInvoice(params as any);
+
+      if (deduplicated) {
+        const invIdx = this.cache.invoices.findIndex((i) => i.id === invoice.id);
+        if (invIdx >= 0) {
+          this.cache.invoices[invIdx] = invoice;
+        }
+        this.cache.invoice_items = [
+          ...this.cache.invoice_items.filter((it) => it.invoice_id !== invoice.id),
+          ...updatedItems,
+        ];
+        return invoice;
+      }
+
+      const invIdx = this.cache.invoices.findIndex((i) => i.id === invoice.id);
+      if (invIdx >= 0) {
+        this.cache.invoices[invIdx] = invoice;
+      } else {
+        this.cache.invoices.push(invoice);
+      }
+
+      this.cache.invoice_items = [
+        ...this.cache.invoice_items.filter((it) => it.invoice_id !== invoice.id),
+        ...updatedItems,
+      ];
+
+      if (stockChanges && stockChanges.length > 0) {
+        for (const sc of stockChanges) {
+          const prod = this.cache.products.find((p) => p.id === sc.productId);
+          if (prod) {
+            prod.qty = sc.newQty;
+          }
+        }
+      }
+
+      if (invoice.type === 'purchase') {
+        for (const item of params.items) {
+          const prod = this.cache.products.find((p) => p.id === item.product_id);
+          if (prod) {
+            prod.buy_price = item.price;
+            if (item.sell_price !== undefined && item.sell_price > 0) {
+              prod.sell_price = item.sell_price;
+            }
+          }
+        }
+      }
+
+      this.notifyListeners();
+      this.broadcastChange('invoices', 'update', invoice.id);
       return invoice;
     });
   }

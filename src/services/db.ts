@@ -76,7 +76,13 @@ const DEFAULT_SETTINGS: StoreSettings = {
   taxRate: 0,
   receiptFooter: 'شكراً لزيارتكم ونتطلع لخدمتكم دائماً',
   googleDriveLinked: false,
+  driveAccountEmail: '',
+  driveLastBackupAt: '',
   userEmail: '',
+  firebaseLinked: false,
+  firebaseAccountEmail: '',
+  firebaseLastSyncAt: '',
+  firebaseProjectId: '',
   fontFamily: 'Cairo',
   fontSize: 15,
   productsFontSize: 14,
@@ -262,12 +268,33 @@ export const DB = {
     await this.saveSettings({ permissionsGranted: true });
   },
 
+  async clearGoogleDriveLink(): Promise<StoreSettings> {
+    assertWriteNotFrozen('clearGoogleDriveLink');
+    return this.saveSettings({
+      googleDriveLinked: false,
+      driveAccountEmail: '',
+      driveLastBackupAt: '',
+    });
+  },
+
+  async clearFirebaseLink(): Promise<StoreSettings> {
+    assertWriteNotFrozen('clearFirebaseLink');
+    return this.saveSettings({
+      firebaseLinked: false,
+      firebaseAccountEmail: '',
+      firebaseLastSyncAt: '',
+      firebaseProjectId: '',
+    });
+  },
+
   async clearGoogleAccount(): Promise<StoreSettings> {
     assertWriteNotFrozen('clearGoogleAccount');
     return this.saveSettings({
       googleDriveLinked: false,
+      driveAccountEmail: '',
       userEmail: '',
-      permissionsGranted: false,
+      firebaseLinked: false,
+      firebaseAccountEmail: '',
     });
   },
 
@@ -787,6 +814,7 @@ export const DB = {
     notes?: string;
     date?: string;
     customInvoiceNumber?: string;
+    originalInvoiceId?: number;
   }): Promise<Invoice> {
     assertWriteNotFrozen('saveInvoice');
 
@@ -895,6 +923,53 @@ export const DB = {
 
     notifyListeners();
     return newInvoice;
+  },
+
+  canEditCurrentUserInvoices(): boolean {
+    const role = this.getSettings().userRole || 'owner';
+    return role !== 'cashier';
+  },
+
+  async canEditInvoice(id: number): Promise<{ canEdit: boolean; reason?: string; invoice?: Invoice }> {
+    if (!this.canEditCurrentUserInvoices()) {
+      return {
+        canEdit: false,
+        reason: 'ليس لديك صلاحية لتعديل الفواتير المحفوظة. يرجى مراجعة مدير النظام.',
+      };
+    }
+    if (operationalSource === 'dexie') {
+      return storageCacheAdapter.canEditInvoice(id);
+    }
+    const inv = this.getInvoiceById(id);
+    if (!inv) return { canEdit: false, reason: 'الفاتورة غير موجودة.' };
+    if (inv.type !== 'sale' && inv.type !== 'purchase') {
+      return { canEdit: false, reason: 'تعديل الفواتير متاح لفواتير البيع والشراء فقط.', invoice: inv };
+    }
+    return { canEdit: true, invoice: inv };
+  },
+
+  async updateInvoice(params: {
+    invoiceId: number;
+    partyId?: number | null;
+    items: Omit<InvoiceItem, 'id' | 'invoice_id'>[];
+    discount: number;
+    paid: number;
+    currency?: string;
+    notes?: string;
+    editIdempotencyKey?: string;
+    actorRole?: 'owner' | 'admin' | 'manager' | 'cashier';
+  }): Promise<Invoice> {
+    assertWriteNotFrozen('updateInvoice');
+    const resolvedRole = params.actorRole || this.getSettings().userRole || 'owner';
+    if (operationalSource === 'dexie') {
+      const updated = await storageCacheAdapter.updateInvoice({
+        ...params,
+        actorRole: resolvedRole,
+      });
+      notifyListeners();
+      return updated;
+    }
+    throw new Error('تعديل الفواتير مدعوم عبر محرك Dexie فقط.');
   },
 
   async deleteInvoice(id: number): Promise<void> {

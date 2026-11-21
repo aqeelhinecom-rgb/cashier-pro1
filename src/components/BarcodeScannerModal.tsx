@@ -112,17 +112,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex bg-black/75 p-3 sm:p-4 backdrop-blur-xs overflow-y-auto overscroll-contain">
+      <div className="relative m-auto w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-default)] shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[var(--border-default)] bg-[var(--bg-surface-subtle)] px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <Barcode className="h-5 w-5 text-teal-600" />
-            <h3 className="font-bold text-slate-800">{title}</h3>
+            <Barcode className="h-5 w-5 text-[var(--brand-primary)]" />
+            <h3 className="app-section-title text-[17px]">{title}</h3>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
+            className="rounded-xl h-10 w-10 flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -170,7 +170,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         </div>
 
         {/* Manual Code Input & Quick Pick */}
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-3.5">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -185,13 +185,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               placeholder="أو أدخل رقم الباركود يدويًا..."
-              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-hidden"
+              className="app-input flex-1 app-num"
               dir="ltr"
             />
             <button
               type="submit"
               disabled={!manualCode.trim()}
-              className="flex items-center gap-1 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40 transition"
+              className="app-btn-primary px-4 shrink-0"
             >
               <Check className="h-4 w-4" />
               تأكيد
@@ -200,15 +200,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
           {/* Quick Barcode Demo Pickers (only products that actually have a barcode) */}
           <div>
-            <span className="text-xs font-semibold text-slate-500">اختر باركود مسجل سريع:</span>
-            <div className="mt-1.5 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            <span className="text-[13px] font-bold text-[var(--text-secondary)]">اختر باركود مسجل سريع:</span>
+            <div className="mt-2 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
               {(() => {
                 const barcodedProducts = availableProducts
                   .filter((p) => Boolean(p.barcode && p.barcode.trim()))
                   .slice(0, 6);
                 if (barcodedProducts.length === 0) {
                   return (
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[13px] text-[var(--text-muted)]">
                       لا توجد منتجات تحتوي على باركود مسجل حالياً
                     </span>
                   );
@@ -218,11 +218,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                     key={p.id}
                     onClick={() => handleDetected(p.barcode)}
                     type="button"
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 hover:border-teal-400 hover:bg-teal-50 hover:text-teal-700 transition flex items-center gap-1"
+                    className="min-h-[38px] rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-subtle)] px-3 py-1.5 text-[13px] font-semibold text-[var(--text-primary)] hover:border-[var(--brand-primary)] hover:bg-[var(--brand-soft)] hover:text-[var(--brand-soft-text)] transition flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Barcode className="h-3 w-3 text-slate-400" />
+                    <Barcode className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                     <span>{p.name.split(' ')[0]}</span>
-                    <span className="font-mono text-[10px] text-slate-400">({p.barcode.slice(-4)})</span>
+                    <span className="app-num text-[11px] text-[var(--text-muted)]">({p.barcode.slice(-4)})</span>
                   </button>
                 ));
               })()}

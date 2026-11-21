@@ -3,6 +3,7 @@ import initSqlJs from 'sql.js/dist/sql-wasm-inline.js';
 import type { Database, SqlValue } from 'sql.js';
 import { DB } from './db';
 import { storageCacheAdapter } from './storage/cacheAdapter';
+import { computeUtf8Sha256 } from './cloud/sha256';
 import { Product, Party, Invoice, InvoiceItem, Payment, Expense } from '../types';
 
 let sqlJsInstance: any = null;
@@ -261,9 +262,11 @@ export async function createSqliteDbBlob(): Promise<{ blob: Blob; fileName: stri
   });
   insertExpenseStmt.free();
 
-  // Insert full JSON in metadata for instantaneous 1:1 lossless fidelity
+  // Insert full JSON in metadata for instantaneous 1:1 lossless fidelity + SHA-256 checksum
   const fullJson = DB.backupData();
+  const fullJsonSha256 = await computeUtf8Sha256(fullJson);
   db.run('INSERT INTO metadata (key, value) VALUES (?, ?)', ['json_backup', fullJson]);
+  db.run('INSERT INTO metadata (key, value) VALUES (?, ?)', ['json_backup_sha256', fullJsonSha256]);
   db.run('INSERT INTO metadata (key, value) VALUES (?, ?)', ['format', 'cashier_sqlite3_v1']);
   db.run('INSERT INTO metadata (key, value) VALUES (?, ?)', ['exported_at', new Date().toISOString()]);
 

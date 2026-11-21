@@ -146,7 +146,7 @@ export const ProductsScreen: React.FC = () => {
     setEditCategory(p.category || 'عام');
     setIsEditCustomCategory(false);
     setEditImage(p.image);
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    document.querySelector('.app-scroll-region')?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   };
 
   const handleOpenEditModal = (p: Product) => {
@@ -329,54 +329,62 @@ export const ProductsScreen: React.FC = () => {
   };
 
   return (
-    <div dir="rtl" className="space-y-4 max-w-3xl mx-auto">
+    <div dir="rtl" className="space-y-4">
       {/* If a product is selected for detail view */}
       {selectedProduct ? (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm space-y-4 p-5">
+        <div className="app-card overflow-hidden space-y-4 p-5">
           {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center justify-between pb-3 border-b border-[var(--border-default)]">
             <button
+              type="button"
               onClick={() => setSelectedProduct(null)}
-              className="text-xs font-bold text-slate-500 hover:text-[#1e4663] flex items-center gap-1 cursor-pointer"
+              className="min-h-[40px] px-2 text-[14px] font-bold text-[var(--text-secondary)] hover:text-[var(--brand-primary)] flex items-center gap-1 cursor-pointer"
             >
               ← العودة للمخزن
             </button>
-            <h2 className="text-base font-extrabold text-[#1e4663]">تفاصيل المنتج</h2>
+            <h2 className="app-section-title text-[var(--brand-soft-text)]">تفاصيل المنتج</h2>
           </div>
 
-          <div className="text-center pt-2">
+          <div className="text-center pt-1">
             {selectedProduct.image && (
               <div className="mb-3 flex justify-center">
                 <img
                   src={selectedProduct.image}
                   alt={selectedProduct.name}
-                  className="h-24 w-24 rounded-2xl object-cover border border-slate-200 shadow-xs"
+                  className="h-24 w-24 rounded-2xl object-cover border border-[var(--border-default)] shadow-xs"
                 />
               </div>
             )}
-            <h3 className="text-xl font-black text-slate-900">{selectedProduct.name}</h3>
+            <h3 className="app-page-title">{selectedProduct.name}</h3>
             {selectedProduct.category && (
-              <p className="mt-1 text-xs font-bold text-[#0d9488]">
+              <p className="mt-1 text-[14px] font-bold text-[var(--brand-soft-text)]">
                 الصنف: {selectedProduct.category}
               </p>
             )}
 
             <button
+              type="button"
               onClick={() => setShowMoreDetails(!showMoreDetails)}
-              className="mt-2 text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1 mx-auto cursor-pointer"
+              className="mt-2.5 min-h-[38px] px-3 text-[14px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center gap-1 mx-auto cursor-pointer"
             >
               <span>عرض المزيد</span>
               {showMoreDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
 
             {showMoreDetails && (
-              <div className="mt-3 p-3 bg-slate-50 rounded-xl text-xs text-slate-600 space-y-1 text-right">
-                <p>الباركود: <span className="font-mono">{selectedProduct.barcode || 'بدون باركود'}</span></p>
+              <div className="mt-3 p-3.5 bg-[var(--bg-surface-subtle)] border border-[var(--border-default)] rounded-xl text-[14px] text-[var(--text-secondary)] space-y-1.5 text-right">
+                <p>
+                  الباركود:{' '}
+                  <span className="font-mono text-[var(--text-primary)]">
+                    {selectedProduct.barcode || 'بدون باركود'}
+                  </span>
+                </p>
                 <p>الصنف: {selectedProduct.category || 'عام'}</p>
                 <p>
                   ربح القطعة الواحدة:{' '}
-                  <span className="font-mono font-bold text-emerald-700">
-                    {Math.max(0, selectedProduct.sell_price - selectedProduct.buy_price).toFixed(0)} {currency}
+                  <span className="app-num font-bold text-[var(--color-success)]">
+                    {Math.max(0, selectedProduct.sell_price - selectedProduct.buy_price).toFixed(0)}{' '}
+                    {currency}
                   </span>
                 </p>
               </div>
@@ -384,122 +392,139 @@ export const ProductsScreen: React.FC = () => {
           </div>
 
           {/* Harmonized Metric Bar */}
-          <div className="grid grid-cols-4 bg-[#1e4663] text-white rounded-xl text-center py-3 text-xs font-bold">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[var(--brand-primary)] text-white rounded-xl text-center py-3.5 px-2 font-bold">
             <div>
-              <span className="text-slate-200 block text-[10px]">رصيد المخزن</span>
+              <span className="text-white/80 block text-[12px]">رصيد المخزن</span>
               <span
-                className={`text-base font-mono font-black ${
-                  selectedProduct.qty <= 0 ? 'text-red-300' : ''
+                className={`text-[18px] app-num font-extrabold ${
+                  selectedProduct.qty <= 0 ? 'text-red-200' : ''
                 }`}
               >
                 {selectedProduct.qty}
               </span>
             </div>
             <div>
-              <span className="text-slate-200 block text-[10px]">سعر الشراء</span>
-              <span className="text-base font-mono font-black">{selectedProduct.buy_price.toFixed(0)}</span>
+              <span className="text-white/80 block text-[12px]">سعر الشراء</span>
+              <span className="text-[18px] app-num font-extrabold">
+                {selectedProduct.buy_price.toFixed(0)}
+              </span>
             </div>
             <div>
-              <span className="text-slate-200 block text-[10px]">سعر البيع</span>
-              <span className="text-base font-mono font-black">{selectedProduct.sell_price.toFixed(0)}</span>
+              <span className="text-white/80 block text-[12px]">سعر البيع</span>
+              <span className="text-[18px] app-num font-extrabold">
+                {selectedProduct.sell_price.toFixed(0)}
+              </span>
             </div>
             <div>
-              <span className="text-slate-200 block text-[10px]">ربح المفرد</span>
-              <span className="text-base font-mono font-black text-teal-300">
+              <span className="text-white/80 block text-[12px]">ربح المفرد</span>
+              <span className="text-[18px] app-num font-extrabold text-emerald-200">
                 {(selectedProduct.sell_price - selectedProduct.buy_price).toFixed(0)}
               </span>
             </div>
           </div>
 
           {/* Total quantity & purchase value in warehouse */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="font-bold text-slate-700 text-xs sm:text-sm">الكمية الاجمالية بالمخزن</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center justify-between p-3.5 bg-[var(--bg-surface-subtle)] rounded-xl border border-[var(--border-default)]">
+              <span className="font-bold text-[var(--text-secondary)] text-[14px]">
+                الكمية الإجمالية بالمخزن
+              </span>
               <span
-                className={`font-black font-mono text-base px-3 py-0.5 rounded-lg border ${
+                className={`font-extrabold app-num text-[17px] px-3 py-0.5 rounded-lg border ${
                   selectedProduct.qty <= 0
-                    ? 'text-[#b91c1c] bg-red-50 border-red-200'
-                    : 'text-[#1e4663] bg-slate-100 border-slate-200'
+                    ? 'text-[var(--color-danger)] bg-[var(--color-danger-bg)] border-[var(--color-danger-border)]'
+                    : 'text-[var(--brand-soft-text)] bg-[var(--bg-surface)] border-[var(--border-default)]'
                 }`}
               >
                 {selectedProduct.qty}
               </span>
             </div>
 
-            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="font-bold text-slate-700 text-xs sm:text-sm">قيمة الموجود (بسعر الشراء)</span>
-              <span className="font-black font-mono text-base text-[#0d9488]">
+            <div className="flex items-center justify-between p-3.5 bg-[var(--bg-surface-subtle)] rounded-xl border border-[var(--border-default)]">
+              <span className="font-bold text-[var(--text-secondary)] text-[14px]">
+                قيمة الموجود (بسعر الشراء)
+              </span>
+              <span className="font-extrabold app-num text-[17px] text-[var(--color-success)]">
                 {(selectedProduct.qty * selectedProduct.buy_price).toFixed(0)} {currency}
               </span>
             </div>
           </div>
 
           {/* Action buttons at bottom */}
-          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center">
+          <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-[var(--border-default)] text-center">
             <button
+              type="button"
               onClick={() => handleOpenEditModal(selectedProduct)}
-              className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-[#1e4663] transition cursor-pointer"
+              className="min-h-[54px] flex flex-col items-center justify-center p-3 rounded-xl bg-[var(--bg-surface-subtle)] hover:bg-[var(--bg-hover)] text-[var(--brand-soft-text)] transition cursor-pointer"
             >
               <Edit2 className="h-5 w-5 mb-1" />
-              <span className="text-xs font-bold">تعديل المنتج</span>
+              <span className="text-[13px] font-bold">تعديل المنتج</span>
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setQuickAddAmount('5');
                 setQuickAddModalOpen(true);
               }}
-              className="flex flex-col items-center justify-center p-3 rounded-xl bg-teal-50/70 hover:bg-teal-100/70 text-[#0d9488] transition cursor-pointer"
+              className="min-h-[54px] flex flex-col items-center justify-center p-3 rounded-xl bg-[var(--color-success-bg)] hover:opacity-90 text-[var(--color-success)] transition cursor-pointer"
             >
               <Plus className="h-5 w-5 mb-1" />
-              <span className="text-xs font-bold">اضف كمية سريعة</span>
+              <span className="text-[13px] font-bold">إضافة كمية</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setConfirmDeleteOpen(true)}
-              className="flex flex-col items-center justify-center p-3 rounded-xl bg-red-50/60 hover:bg-red-100/70 text-[#b91c1c] transition cursor-pointer"
+              className="min-h-[54px] flex flex-col items-center justify-center p-3 rounded-xl bg-[var(--color-danger-bg)] hover:opacity-90 text-[var(--color-danger)] transition cursor-pointer"
             >
               <Trash2 className="h-5 w-5 mb-1" />
-              <span className="text-xs font-bold">حذف المنتج</span>
+              <span className="text-[13px] font-bold">حذف المنتج</span>
             </button>
           </div>
         </div>
       ) : (
         /* Products List view */
-        <div className="space-y-2.5 sm:space-y-3">
+        <div className="space-y-3">
           {/* Warehouse Valuation Strip */}
-          <div className="grid grid-cols-3 gap-2 text-right">
-            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs min-w-0">
-              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 block truncate">عدد الأصناف</span>
-              <span className="text-xs sm:text-sm font-black font-mono text-[#1e4663] block truncate">
+          <div className="grid grid-cols-3 gap-2.5 text-right">
+            <div className="app-card p-3 min-w-0">
+              <span className="text-[13px] font-semibold text-[var(--text-secondary)] block truncate">
+                عدد الأصناف
+              </span>
+              <span className="text-[16px] sm:text-[18px] font-extrabold app-num text-[var(--brand-soft-text)] block truncate mt-0.5">
                 {allWarehouseProducts.length} صنف
               </span>
             </div>
-            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs min-w-0">
-              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 block truncate">قيمة المخزن (شراء)</span>
-              <span className="text-xs sm:text-sm font-black font-mono text-[#0d9488] block truncate">
+            <div className="app-card p-3 min-w-0">
+              <span className="text-[13px] font-semibold text-[var(--text-secondary)] block truncate">
+                قيمة المخزن (شراء)
+              </span>
+              <span className="text-[16px] sm:text-[18px] font-extrabold app-num text-[var(--color-success)] block truncate mt-0.5">
                 {totalBuyVal.toFixed(0)} {currency}
               </span>
             </div>
-            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs min-w-0">
-              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 block truncate">قيمة المخزن (بيع)</span>
-              <span className="text-xs sm:text-sm font-black font-mono text-slate-900 block truncate">
+            <div className="app-card p-3 min-w-0">
+              <span className="text-[13px] font-semibold text-[var(--text-secondary)] block truncate">
+                قيمة المخزن (بيع)
+              </span>
+              <span className="text-[16px] sm:text-[18px] font-extrabold app-num text-[var(--text-primary)] block truncate mt-0.5">
                 {totalSellVal.toFixed(0)} {currency}
               </span>
             </div>
           </div>
 
           {/* Search Bar, Stock Filter Tabs & Add New Product Button */}
-          <div className="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+          <div className="app-card p-3.5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1 p-1 bg-[var(--bg-surface-subtle)] border border-[var(--border-default)] rounded-xl">
                 <button
                   type="button"
                   onClick={() => setStockFilter('all')}
-                  className={`px-2 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer ${
+                  className={`min-h-[38px] px-3 py-1 rounded-lg text-[13px] sm:text-[14px] font-bold transition cursor-pointer ${
                     stockFilter === 'all'
-                      ? 'bg-[#1e4663] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[var(--brand-primary)] text-white shadow-xs'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   الكل ({allWarehouseProducts.length})
@@ -507,10 +532,10 @@ export const ProductsScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStockFilter('low')}
-                  className={`px-2 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer ${
+                  className={`min-h-[38px] px-3 py-1 rounded-lg text-[13px] sm:text-[14px] font-bold transition cursor-pointer ${
                     stockFilter === 'low'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[var(--color-warning)] text-white shadow-xs'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   نواقص ({lowCount})
@@ -518,61 +543,65 @@ export const ProductsScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStockFilter('out')}
-                  className={`px-2 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer ${
+                  className={`min-h-[38px] px-3 py-1 rounded-lg text-[13px] sm:text-[14px] font-bold transition cursor-pointer ${
                     stockFilter === 'out'
-                      ? 'bg-[#b91c1c] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-[var(--color-danger)] text-white shadow-xs'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  منتهي 0 ({outCount})
+                  منتهي ({outCount})
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setExcelModalOpen(true)}
-                  className="rounded-xl border border-emerald-600/30 bg-emerald-50 hover:bg-emerald-100/80 px-2.5 py-1.5 text-[11px] sm:text-xs font-extrabold text-emerald-800 flex items-center gap-1 transition cursor-pointer"
+                  className="app-btn-secondary min-h-[42px] px-3 py-2 text-[14px] text-[var(--color-success)]"
                   title="استيراد منتجات من ملف إكسل وتسعير البيع"
                 >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-700" />
+                  <FileSpreadsheet className="h-4 w-4" />
                   <span>من إكسل</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setCategoriesModalOpen(true)}
-                  className="rounded-xl border border-[#1e4663]/30 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 text-[11px] sm:text-xs font-extrabold text-[#1e4663] flex items-center gap-1 transition cursor-pointer"
+                  className="app-btn-secondary min-h-[42px] px-3 py-2 text-[14px]"
                   title="إضافة أو تعديل الأصناف"
                 >
-                  <Tag className="h-3.5 w-3.5" />
+                  <Tag className="h-4 w-4" />
                   <span>الأصناف</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setAddModalOpen(true)}
-                  className="rounded-xl bg-[#1e4663] hover:bg-[#16354b] px-3 py-1.5 text-[11px] sm:text-xs font-extrabold text-white transition cursor-pointer"
+                  className="app-btn-primary min-h-[42px] px-3.5 py-2 text-[14px]"
                 >
-                  + إضافة منتج
+                  <Plus className="h-4 w-4" />
+                  <span>إضافة منتج</span>
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div className="relative sm:col-span-2">
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="ادخل اسم المنتج أو الباركود..."
-                  className="w-full rounded-xl border border-slate-300 bg-slate-50 py-2 px-3 text-xs sm:text-sm pr-9 focus:border-[#1e4663] focus:bg-white focus:outline-hidden"
+                  className="app-input pr-10"
                 />
-                <Filter className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Filter className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 focus:border-[#1e4663] focus:outline-hidden"
+                  className="app-input flex-1 font-bold"
                 >
                   <option value="all">جميع الأصناف ({categories.length})</option>
                   {categories.map((cat) => (
@@ -584,7 +613,7 @@ export const ProductsScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCategoriesModalOpen(true)}
-                  className="p-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#1e4663] shrink-0 transition cursor-pointer"
+                  className="app-btn-secondary min-h-[44px] min-w-[44px] px-2.5"
                   title="إضافة أو تعديل الأصناف"
                 >
                   <Edit2 className="h-4 w-4" />
@@ -593,54 +622,54 @@ export const ProductsScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Table Header harmonized to #1e4663 */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
-            <div className="grid grid-cols-12 bg-[#1e4663] text-white text-xs font-bold py-2 px-3 text-center select-none">
+          {/* Unified Table Header */}
+          <div className="app-card overflow-hidden">
+            <div className="grid grid-cols-12 app-table-head text-[14px] py-2.5 px-3.5 text-center select-none">
               <button
                 type="button"
                 onClick={() => handleSort('name')}
-                className="col-span-6 text-right flex items-center gap-1 hover:text-teal-300 transition cursor-pointer"
+                className="col-span-6 text-right flex items-center gap-1.5 hover:opacity-85 transition cursor-pointer"
               >
                 {sortField === 'name' ? (
                   sortDir === 'desc' ? (
-                    <ArrowDown className="h-3.5 w-3.5 text-teal-300" />
+                    <ArrowDown className="h-4 w-4" />
                   ) : (
-                    <ArrowUp className="h-3.5 w-3.5 text-teal-300" />
+                    <ArrowUp className="h-4 w-4" />
                   )
                 ) : (
-                  <ArrowUpDown className="h-3 w-3 opacity-70" />
+                  <ArrowUpDown className="h-3.5 w-3.5 opacity-75" />
                 )}
                 <span>المنتج</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSort('qty')}
-                className="col-span-3 flex items-center justify-center gap-1 hover:text-teal-300 transition cursor-pointer"
+                className="col-span-3 flex items-center justify-center gap-1.5 hover:opacity-85 transition cursor-pointer"
               >
                 {sortField === 'qty' ? (
                   sortDir === 'desc' ? (
-                    <ArrowDown className="h-3.5 w-3.5 text-teal-300" />
+                    <ArrowDown className="h-4 w-4" />
                   ) : (
-                    <ArrowUp className="h-3.5 w-3.5 text-teal-300" />
+                    <ArrowUp className="h-4 w-4" />
                   )
                 ) : (
-                  <ArrowUpDown className="h-3 w-3 opacity-70" />
+                  <ArrowUpDown className="h-3.5 w-3.5 opacity-75" />
                 )}
                 <span>الكمية</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSort('price')}
-                className="col-span-3 flex items-center justify-center gap-1 hover:text-teal-300 transition cursor-pointer"
+                className="col-span-3 flex items-center justify-center gap-1.5 hover:opacity-85 transition cursor-pointer"
               >
                 {sortField === 'price' ? (
                   sortDir === 'desc' ? (
-                    <ArrowDown className="h-3.5 w-3.5 text-teal-300" />
+                    <ArrowDown className="h-4 w-4" />
                   ) : (
-                    <ArrowUp className="h-3.5 w-3.5 text-teal-300" />
+                    <ArrowUp className="h-4 w-4" />
                   )
                 ) : (
-                  <ArrowUpDown className="h-3 w-3 opacity-70" />
+                  <ArrowUpDown className="h-3.5 w-3.5 opacity-75" />
                 )}
                 <span>السعر</span>
               </button>
@@ -648,43 +677,49 @@ export const ProductsScreen: React.FC = () => {
 
             {/* Rows */}
             {sortedProducts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-400">لا توجد منتجات مطابقة</div>
+              <div className="py-12 text-center text-[15px] text-[var(--text-muted)] font-semibold">
+                لا توجد منتجات مطابقة
+              </div>
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-[var(--border-default)]">
                 {sortedProducts.map((p) => (
                   <div
                     key={p.id}
                     onClick={() => handleSelectProduct(p)}
                     style={{ fontSize: `${productsFontSize}px` }}
-                    className="grid grid-cols-12 py-2.5 px-3 font-semibold hover:bg-slate-50/80 transition cursor-pointer items-center text-center"
+                    className="grid grid-cols-12 py-3 px-3.5 font-semibold hover:bg-[var(--bg-hover)] transition-colors cursor-pointer items-center text-center"
                   >
-                    <div className="col-span-6 text-right flex items-center gap-2 truncate">
+                    <div className="col-span-6 text-right flex items-center gap-2.5 truncate">
                       {p.image ? (
                         <img
                           src={p.image}
                           alt={p.name}
-                          className="h-8 w-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                          className="h-9 w-9 rounded-lg object-cover border border-[var(--border-default)] shrink-0"
                         />
                       ) : null}
                       <div className="truncate">
-                        <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                        <div className="font-bold text-[var(--text-primary)] truncate">
+                          {p.name}
+                        </div>
                         {p.category && (
-                          <span className="text-[10px] text-slate-400 block truncate">{p.category}</span>
+                          <span className="text-[12px] text-[var(--text-muted)] block truncate">
+                            {p.category}
+                          </span>
                         )}
                       </div>
                     </div>
                     <div
-                      className={`col-span-3 font-mono ${
+                      className={`col-span-3 app-num ${
                         p.qty <= 0
-                          ? 'text-[#b91c1c] font-black'
+                          ? 'text-[var(--color-danger)] font-extrabold'
                           : p.qty <= 5
-                          ? 'text-amber-700 font-bold'
-                          : 'text-slate-700 font-bold'
+                          ? 'text-[var(--color-warning)] font-bold'
+                          : 'text-[var(--text-primary)] font-bold'
                       }`}
                     >
                       {p.qty}
                     </div>
-                    <div className="col-span-3 font-mono font-bold text-[#1e4663]">
+                    <div className="col-span-3 app-num font-bold text-[var(--brand-soft-text)]">
                       {p.sell_price.toFixed(0)}
                     </div>
                   </div>
@@ -699,14 +734,12 @@ export const ProductsScreen: React.FC = () => {
       {quickAddModalOpen && selectedProduct && (
         <div
           dir="rtl"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex bg-black/60 p-3 sm:p-4 backdrop-blur-[2px] overflow-y-auto overscroll-contain"
         >
-          <div className="w-full max-w-xs rounded-2xl bg-white p-5 shadow-2xl space-y-4">
-            <h3 className="text-base font-extrabold text-[#1e4663] text-center">
-              إضافة كمية سريعة للمخزن
-            </h3>
-            <p className="text-xs text-slate-500 text-center">{selectedProduct.name}</p>
-            <form onSubmit={handleConfirmQuickAddQty} className="space-y-3">
+          <div className="m-auto w-full max-w-xs max-h-[90dvh] overflow-y-auto app-card p-5 shadow-2xl space-y-4">
+            <h3 className="app-section-title text-center">إضافة كمية سريعة للمخزن</h3>
+            <p className="app-meta-text text-center">{selectedProduct.name}</p>
+            <form onSubmit={handleConfirmQuickAddQty} className="space-y-3.5">
               <input
                 type="number"
                 step="any"
@@ -714,20 +747,17 @@ export const ProductsScreen: React.FC = () => {
                 required
                 value={quickAddAmount}
                 onChange={(e) => setQuickAddAmount(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 py-2.5 text-center font-mono text-lg font-black text-slate-900 focus:border-[#1e4663] focus:outline-hidden"
+                className="app-input text-center app-num text-[20px] font-extrabold"
               />
-              <div className="flex gap-2">
+              <div className="flex gap-2.5">
                 <button
                   type="button"
                   onClick={() => setQuickAddModalOpen(false)}
-                  className="flex-1 rounded-xl border border-slate-300 py-2 text-xs font-bold text-slate-700"
+                  className="app-btn-secondary flex-1"
                 >
                   إلغاء
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 rounded-xl bg-[#0d9488] hover:bg-teal-700 py-2 text-xs font-extrabold text-white"
-                >
+                <button type="submit" className="app-btn-primary flex-1">
                   إضافة للمخزن
                 </button>
               </div>
@@ -740,18 +770,18 @@ export const ProductsScreen: React.FC = () => {
       {confirmDeleteOpen && selectedProduct && (
         <div
           dir="rtl"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex bg-black/60 p-3 sm:p-4 backdrop-blur-[2px] overflow-y-auto overscroll-contain"
         >
-          <div className="w-full max-w-xs rounded-2xl bg-white p-5 shadow-2xl text-center space-y-4">
-            <h3 className="text-base font-extrabold text-slate-900">تأكيد حذف المنتج</h3>
-            <p className="text-xs text-slate-600">
+          <div className="m-auto w-full max-w-xs max-h-[90dvh] overflow-y-auto app-card p-5 shadow-2xl text-center space-y-4">
+            <h3 className="app-section-title">تأكيد حذف المنتج</h3>
+            <p className="app-meta-text">
               هل أنت متأكد من حذف &quot;{selectedProduct.name}&quot; من المخزن؟
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-2.5">
               <button
                 type="button"
                 onClick={() => setConfirmDeleteOpen(false)}
-                className="flex-1 rounded-xl border border-slate-300 py-2 text-xs font-bold text-slate-700"
+                className="app-btn-secondary flex-1"
               >
                 إلغاء
               </button>
@@ -759,7 +789,7 @@ export const ProductsScreen: React.FC = () => {
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleDeleteProduct}
-                className="flex-1 rounded-xl bg-[#b91c1c] py-2 text-xs font-extrabold text-white disabled:opacity-50"
+                className="app-btn-danger flex-1"
               >
                 {isSubmitting ? 'جاري الحذف...' : 'حذف'}
               </button>
@@ -770,33 +800,39 @@ export const ProductsScreen: React.FC = () => {
 
       {/* Edit Modal */}
       {editModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl my-4 max-h-[92dvh] overflow-y-auto">
+        <div
+          dir="rtl"
+          className="fixed inset-0 z-50 flex bg-black/60 p-3 sm:p-4 backdrop-blur-[2px] overflow-y-auto overscroll-contain"
+        >
+          <div className="relative m-auto w-full max-w-sm app-card p-5 shadow-2xl max-h-[90dvh] overflow-y-auto">
             <button
+              type="button"
               onClick={() => setEditModalOpen(false)}
-              className="absolute top-4 left-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              className="absolute top-3.5 left-3.5 min-h-[38px] min-w-[38px] flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded-xl cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
 
-            <h3 className="text-lg font-black text-[#1e4663] text-center mb-4">تعديل المنتج والصنف</h3>
+            <h3 className="app-section-title text-center mb-4">تعديل المنتج والصنف</h3>
 
-            <form onSubmit={handleSaveEdit} className="space-y-3">
+            <form onSubmit={handleSaveEdit} className="space-y-3.5">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-700">الصنف (التصنيف)</label>
-                  <div className="flex items-center gap-2">
+                  <label className="text-[14px] font-bold text-[var(--text-secondary)]">
+                    الصنف (التصنيف)
+                  </label>
+                  <div className="flex items-center gap-2.5">
                     <button
                       type="button"
                       onClick={() => setIsEditCustomCategory(!isEditCustomCategory)}
-                      className="text-[11px] font-bold text-[#0d9488] hover:underline cursor-pointer"
+                      className="text-[13px] font-bold text-[var(--brand-soft-text)] hover:underline cursor-pointer"
                     >
-                      {isEditCustomCategory ? 'اختيار من القائمة' : '+ كتابة أو تعديل الصنف'}
+                      {isEditCustomCategory ? 'اختيار من القائمة' : '+ كتابة صنف'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setCategoriesModalOpen(true)}
-                      className="text-[11px] font-bold text-[#1e4663] hover:underline cursor-pointer"
+                      className="text-[13px] font-bold text-[var(--text-secondary)] hover:underline cursor-pointer"
                     >
                       إدارة الأصناف
                     </button>
@@ -809,13 +845,13 @@ export const ProductsScreen: React.FC = () => {
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
                     placeholder="اكتب اسم الصنف الجديد أو المعدل..."
-                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm font-bold text-slate-800 focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input"
                   />
                 ) : (
                   <select
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm font-bold text-slate-800 focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input font-semibold"
                   >
                     {categories.map((cat) => (
                       <option key={cat} value={cat}>
@@ -827,7 +863,7 @@ export const ProductsScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1 text-right">
                   اسم المنتج
                 </label>
                 <input
@@ -835,13 +871,13 @@ export const ProductsScreen: React.FC = () => {
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm font-bold text-slate-900 focus:border-[#1e4663] focus:outline-hidden"
+                  className="app-input font-bold"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                  <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1 text-right">
                     الكمية
                   </label>
                   <input
@@ -850,11 +886,11 @@ export const ProductsScreen: React.FC = () => {
                     required
                     value={editQty}
                     onChange={(e) => setEditQty(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-center text-sm font-bold font-mono text-slate-800 focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input text-center font-bold app-num"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                  <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1 text-right">
                     الباركود
                   </label>
                   <input
@@ -863,14 +899,14 @@ export const ProductsScreen: React.FC = () => {
                     onChange={(e) => setEditBarcode(e.target.value)}
                     placeholder="اختياري"
                     dir="ltr"
-                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-center text-sm font-mono text-slate-800 focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input text-center font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                  <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1 text-right">
                     سعر الشراء
                   </label>
                   <input
@@ -879,12 +915,12 @@ export const ProductsScreen: React.FC = () => {
                     required
                     value={editBuyPrice}
                     onChange={(e) => setEditBuyPrice(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-center text-sm font-bold font-mono text-slate-600 focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input text-center font-bold app-num"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                  <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1 text-right">
                     سعر البيع
                   </label>
                   <input
@@ -893,13 +929,13 @@ export const ProductsScreen: React.FC = () => {
                     required
                     value={editSellPrice}
                     onChange={(e) => setEditSellPrice(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-center text-sm font-bold font-mono text-slate-900 focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input text-center font-bold app-num"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 text-right">
+                <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1 text-right">
                   صورة المنتج (اختياري)
                 </label>
                 <input
@@ -916,24 +952,24 @@ export const ProductsScreen: React.FC = () => {
                   className="hidden"
                 />
                 {editImage ? (
-                  <div className="flex items-center justify-between p-2 rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-subtle)]">
                     <img
                       src={editImage}
                       alt=""
-                      className="h-11 w-11 rounded-lg object-cover"
+                      className="h-12 w-12 rounded-lg object-cover"
                     />
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => editFileInputRef.current?.click()}
-                        className="text-xs font-bold text-[#0d9488] px-2 py-1"
+                        className="text-[13px] font-bold text-[var(--brand-soft-text)] px-2.5 py-1.5 cursor-pointer"
                       >
                         تغيير
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditImage('')}
-                        className="text-xs font-bold text-[#b91c1c] px-2 py-1"
+                        className="text-[13px] font-bold text-[var(--color-danger)] px-2.5 py-1.5 cursor-pointer"
                       >
                         حذف
                       </button>
@@ -943,7 +979,7 @@ export const ProductsScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => editFileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    className="app-btn-secondary w-full border-dashed"
                   >
                     <ImageIcon className="h-4 w-4" />
                     <span>إرفاق صورة للمنتج</span>
@@ -952,10 +988,7 @@ export const ProductsScreen: React.FC = () => {
               </div>
 
               <div className="pt-1">
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-[#1e4663] py-2.5 text-sm font-extrabold text-white hover:bg-[#16354b] shadow-md transition active:scale-98 cursor-pointer"
-                >
+                <button type="submit" className="app-btn-primary w-full">
                   حفظ التعديلات
                 </button>
               </div>
@@ -966,33 +999,39 @@ export const ProductsScreen: React.FC = () => {
 
       {/* Add Product Modal */}
       {addModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl my-4 max-h-[92dvh] overflow-y-auto">
+        <div
+          dir="rtl"
+          className="fixed inset-0 z-50 flex bg-black/60 p-3 sm:p-4 backdrop-blur-[2px] overflow-y-auto overscroll-contain"
+        >
+          <div className="relative m-auto w-full max-w-sm app-card p-5 shadow-2xl max-h-[90dvh] overflow-y-auto">
             <button
+              type="button"
               onClick={() => setAddModalOpen(false)}
-              className="absolute top-4 left-4 text-slate-400 hover:text-slate-700"
+              className="absolute top-3.5 left-3.5 min-h-[38px] min-w-[38px] flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded-xl cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
 
-            <h3 className="text-lg font-black text-[#1e4663] text-center mb-4">إضافة منتج / صنف للمخزن</h3>
+            <h3 className="app-section-title text-center mb-4">إضافة منتج / صنف للمخزن</h3>
 
-            <form onSubmit={handleCreateProduct} className="space-y-3">
+            <form onSubmit={handleCreateProduct} className="space-y-3.5">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-700">الصنف (التصنيف)</label>
-                  <div className="flex items-center gap-2">
+                  <label className="text-[14px] font-bold text-[var(--text-secondary)]">
+                    الصنف (التصنيف)
+                  </label>
+                  <div className="flex items-center gap-2.5">
                     <button
                       type="button"
                       onClick={() => setIsCustomCategory(!isCustomCategory)}
-                      className="text-[11px] font-bold text-[#0d9488] hover:underline cursor-pointer"
+                      className="text-[13px] font-bold text-[var(--brand-soft-text)] hover:underline cursor-pointer"
                     >
-                      {isCustomCategory ? 'اختيار من الأصناف' : '+ كتابة صنف جديد'}
+                      {isCustomCategory ? 'اختيار من الأصناف' : '+ صنف جديد'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setCategoriesModalOpen(true)}
-                      className="text-[11px] font-bold text-[#1e4663] hover:underline cursor-pointer"
+                      className="text-[13px] font-bold text-[var(--text-secondary)] hover:underline cursor-pointer"
                     >
                       تعديل الأصناف
                     </button>
@@ -1005,13 +1044,13 @@ export const ProductsScreen: React.FC = () => {
                     value={customCategory}
                     onChange={(e) => setCustomCategory(e.target.value)}
                     placeholder="اكتب اسم الصنف الجديد..."
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input"
                   />
                 ) : (
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input font-semibold"
                   >
                     {categories.map((cat) => (
                       <option key={cat} value={cat}>
@@ -1023,52 +1062,61 @@ export const ProductsScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">اسم المنتج</label>
+                <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1">
+                  اسم المنتج
+                </label>
                 <input
                   type="text"
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="مثال: Lcd iph 11 pro max"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-[#1e4663] focus:outline-hidden"
+                  className="app-input"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الباركود</label>
+                <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1">
+                  الباركود
+                </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={newBarcode}
                     onChange={(e) => setNewBarcode(e.target.value)}
                     placeholder="رقم الباركود (اختياري)"
-                    className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input flex-1 font-mono"
                     dir="ltr"
                   />
                   <button
                     type="button"
                     onClick={() => setScannerOpen(true)}
-                    className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100"
+                    className="app-btn-secondary min-w-[44px] px-3"
+                    aria-label="مسح الباركود"
                   >
-                    <Barcode className="h-4 w-4" />
+                    <Barcode className="h-5 w-5" />
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">سعر الشراء</label>
+                  <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1">
+                    سعر الشراء
+                  </label>
                   <input
                     type="number"
                     step="any"
                     value={newBuyPrice}
                     onChange={(e) => setNewBuyPrice(e.target.value)}
                     placeholder="0"
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input app-num"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">سعر البيع</label>
+                  <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1">
+                    سعر البيع
+                  </label>
                   <input
                     type="number"
                     step="any"
@@ -1076,25 +1124,27 @@ export const ProductsScreen: React.FC = () => {
                     value={newSellPrice}
                     onChange={(e) => setNewSellPrice(e.target.value)}
                     placeholder="0"
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono font-bold focus:border-[#1e4663] focus:outline-hidden"
+                    className="app-input app-num font-bold"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">العدد / الكمية الأولية</label>
+                <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1">
+                  العدد / الكمية الأولية
+                </label>
                 <input
                   type="number"
                   step="any"
                   value={newQty}
                   onChange={(e) => setNewQty(e.target.value)}
                   placeholder="1"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:border-[#1e4663] focus:outline-hidden"
+                  className="app-input app-num"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-[14px] font-bold text-[var(--text-secondary)] mb-1">
                   صورة المنتج (اختياري)
                 </label>
                 <input
@@ -1111,7 +1161,7 @@ export const ProductsScreen: React.FC = () => {
                   className="hidden"
                 />
                 {newImage ? (
-                  <div className="flex items-center justify-between p-2 rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface-subtle)]">
                     <img
                       src={newImage}
                       alt=""
@@ -1121,14 +1171,14 @@ export const ProductsScreen: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => addFileInputRef.current?.click()}
-                        className="text-xs font-bold text-[#0d9488]"
+                        className="text-[13px] font-bold text-[var(--brand-soft-text)] px-2.5 py-1.5 cursor-pointer"
                       >
                         تغيير
                       </button>
                       <button
                         type="button"
                         onClick={() => setNewImage('')}
-                        className="text-xs font-bold text-[#b91c1c]"
+                        className="text-[13px] font-bold text-[var(--color-danger)] px-2.5 py-1.5 cursor-pointer"
                       >
                         حذف
                       </button>
@@ -1138,7 +1188,7 @@ export const ProductsScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => addFileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    className="app-btn-secondary w-full border-dashed"
                   >
                     <ImageIcon className="h-4 w-4" />
                     <span>اختيار صورة للمنتج (اختياري)</span>
@@ -1147,10 +1197,7 @@ export const ProductsScreen: React.FC = () => {
               </div>
 
               <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-[#1e4663] py-2.5 text-sm font-extrabold text-white hover:bg-[#16354b]"
-                >
+                <button type="submit" className="app-btn-primary w-full">
                   حفظ الصنف
                 </button>
               </div>
@@ -1159,52 +1206,54 @@ export const ProductsScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Categories Management Modal (إدارة وتعديل الأصناف: إضافة أو تعديل أو حذف) */}
+      {/* Categories Management Modal */}
       {categoriesModalOpen && (
         <div
           dir="rtl"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex bg-black/60 p-3 sm:p-4 backdrop-blur-[2px] overflow-y-auto overscroll-contain"
         >
-          <div className="relative w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl flex flex-col max-h-[85dvh]">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
+          <div className="relative m-auto w-full max-w-sm app-card p-5 shadow-2xl flex flex-col max-h-[90dvh]">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-default)] shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-[var(--brand-soft)] text-[var(--brand-soft-text)] flex items-center justify-center">
                   <Tag className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-[#1e4663]">إدارة الأصناف</h3>
-                  <p className="text-[10px] text-slate-500">إضافة صنف جديد أو تعديل وحذف الأصناف</p>
+                  <h3 className="app-section-title">إدارة الأصناف</h3>
+                  <p className="text-[12px] text-[var(--text-muted)]">
+                    إضافة صنف جديد أو تعديل وحذف الأصناف
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setCategoriesModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-hover)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Add new category form */}
-            <form onSubmit={handleAddNewCategory} className="flex items-center gap-2 py-3 border-b border-slate-100">
+            <form
+              onSubmit={handleAddNewCategory}
+              className="flex items-center gap-2 py-3 border-b border-[var(--border-default)] shrink-0"
+            >
               <input
                 type="text"
                 value={newCategoryInput}
                 onChange={(e) => setNewCategoryInput(e.target.value)}
-                placeholder="اكتب اسم صنف جديد لإضافته..."
-                className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 focus:border-[#1e4663] focus:bg-white focus:outline-hidden"
+                placeholder="اكتب اسم صنف جديد..."
+                className="app-input flex-1"
               />
-              <button
-                type="submit"
-                className="rounded-xl bg-[#1e4663] hover:bg-[#16354b] text-white px-3.5 py-2 text-xs font-extrabold flex items-center gap-1 shrink-0 transition cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
+              <button type="submit" className="app-btn-primary px-3.5">
+                <Plus className="h-4 w-4" />
                 <span>إضافة</span>
               </button>
             </form>
 
             {/* List of existing categories with inline Edit & Delete */}
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 py-1">
+            <div className="app-scroll-region flex-1 min-h-0 divide-y divide-[var(--border-default)] py-1">
               {categories.map((cat) => {
                 const isEditingThis = editingCategoryName === cat;
                 const count = allWarehouseProducts.filter((p) => (p.category || 'عام') === cat).length;
@@ -1222,32 +1271,32 @@ export const ProductsScreen: React.FC = () => {
                             if (e.key === 'Escape') setEditingCategoryName(null);
                           }}
                           autoFocus
-                          className="flex-1 rounded-lg border border-teal-500 px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-hidden"
+                          className="app-input flex-1 min-h-[38px] py-1"
                         />
                         <button
                           type="button"
                           onClick={() => handleSaveRenamedCategory(cat)}
-                          className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition cursor-pointer"
+                          className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-[var(--color-success)] text-white cursor-pointer"
                           title="حفظ التعديل"
                         >
-                          <Check className="h-3.5 w-3.5" />
+                          <Check className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setEditingCategoryName(null)}
-                          className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+                          className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] cursor-pointer"
                           title="إلغاء"
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <X className="h-4 w-4" />
                         </button>
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-bold text-slate-800 text-xs sm:text-sm truncate">
+                          <span className="font-bold text-[var(--text-primary)] text-[15px] truncate">
                             {cat}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-semibold shrink-0">
+                          <span className="text-[12px] text-[var(--text-muted)] font-semibold shrink-0 app-num">
                             ({count} منتج)
                           </span>
                         </div>
@@ -1259,20 +1308,20 @@ export const ProductsScreen: React.FC = () => {
                               setEditingCategoryName(cat);
                               setEditingCategoryValue(cat);
                             }}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-[#1e4663] hover:bg-slate-100 transition cursor-pointer"
+                            className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] hover:bg-[var(--bg-hover)] transition cursor-pointer"
                             title="تعديل اسم الصنف"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Edit2 className="h-4 w-4" />
                           </button>
                           {cat !== 'عام' && (
                             <button
                               type="button"
                               disabled={isSubmitting}
                               onClick={() => handleDeleteCategory(cat)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-[#b91c1c] hover:bg-red-50 transition cursor-pointer disabled:opacity-50"
+                              className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition cursor-pointer disabled:opacity-50"
                               title="حذف الصنف"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           )}
                         </div>
@@ -1283,11 +1332,11 @@ export const ProductsScreen: React.FC = () => {
               })}
             </div>
 
-            <div className="pt-3 border-t border-slate-100">
+            <div className="pt-3 border-t border-[var(--border-default)] shrink-0">
               <button
                 type="button"
                 onClick={() => setCategoriesModalOpen(false)}
-                className="w-full rounded-xl bg-slate-100 hover:bg-slate-200 py-2 text-xs font-extrabold text-slate-700 transition cursor-pointer"
+                className="app-btn-secondary w-full"
               >
                 إغلاق
               </button>

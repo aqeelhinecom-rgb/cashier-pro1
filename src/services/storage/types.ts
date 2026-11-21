@@ -62,6 +62,7 @@ export interface StorageInvoice extends Invoice {
   updatedAt: string;
   isDeleted?: boolean;
   notes?: string;
+  original_invoice_id?: number;
 }
 
 export interface StorageInvoiceItem extends InvoiceItem {

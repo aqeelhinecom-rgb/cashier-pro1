@@ -2,7 +2,6 @@ import {createRoot} from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
 import App from './App.tsx';
 import './index.css';
-import { testFirestoreConnection } from './services/firebase';
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   if (Capacitor.isNativePlatform()) {
@@ -18,9 +17,5 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     });
   }
 }
-
-testFirestoreConnection().catch((err) => {
-  console.warn('Firestore initial connection check:', err);
-});
 
 createRoot(document.getElementById('root')!).render(<App />);

@@ -346,20 +346,20 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   return (
     <div
       dir="rtl"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-2.5 sm:p-4 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex bg-black/65 p-2.5 sm:p-4 backdrop-blur-xs overflow-y-auto overscroll-contain"
     >
-      <div className="relative w-full max-w-2xl rounded-3xl bg-white shadow-2xl flex flex-col max-h-[92dvh] overflow-hidden">
+      <div className="relative m-auto w-full max-w-2xl rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-default)] shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-[#1e4663] text-white">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="h-9 w-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-              <FileSpreadsheet className="h-5 w-5 text-emerald-300" />
+        <div className="flex items-center justify-between px-4 py-3.5 bg-[var(--brand-primary)] text-white">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="h-5 w-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-black truncate">
+              <h3 className="text-[16px] sm:text-[17px] font-extrabold truncate">
                 استيراد المنتجات من إكسل وتسعير البيع
               </h3>
-              <p className="text-[10px] sm:text-[11px] text-slate-200 truncate">
+              <p className="text-[12px] text-white/80 truncate">
                 اختر السعر الجديد أو القديم لكل منتج قبل إضافته للمخزن
               </p>
             </div>
@@ -367,16 +367,16 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition shrink-0"
+            className="h-10 w-10 rounded-xl text-white/85 hover:bg-white/15 hover:text-white transition shrink-0 flex items-center justify-center cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-4 space-y-3.5">
           {/* File Upload & Template Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--bg-surface-subtle)] p-3 rounded-2xl border border-[var(--border-default)]">
             <input
               ref={fileInputRef}
               type="file"
@@ -389,7 +389,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-xl bg-[#0d9488] hover:bg-teal-700 text-white px-3.5 py-2 text-xs sm:text-sm font-extrabold shadow-xs transition cursor-pointer"
+                className="app-btn-primary text-[14px]"
               >
                 <Upload className="h-4 w-4" />
                 <span>{rows.length > 0 ? 'اختيار ملف إكسل آخر' : 'اختر ملف إكسل (.xlsx / .csv)'}</span>
@@ -398,47 +398,47 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               <button
                 type="button"
                 onClick={handleDownloadSampleTemplate}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 px-3 py-2 text-xs font-bold transition cursor-pointer"
+                className="app-btn-secondary text-[14px]"
               >
-                <Download className="h-3.5 w-3.5 text-[#1e4663]" />
+                <Download className="h-4 w-4 text-[var(--brand-primary)]" />
                 <span>تحميل نموذج إكسل جاهز</span>
               </button>
             </div>
 
             {fileName && (
-              <span className="text-[11px] font-bold text-slate-600 truncate max-w-[200px]">
+              <span className="text-[13px] font-bold text-[var(--text-secondary)] truncate max-w-[200px]">
                 الملف: {fileName}
               </span>
             )}
           </div>
 
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
+            <div className="p-3.5 rounded-xl bg-[var(--color-danger-bg)] border border-[var(--color-danger-border)] text-[var(--color-danger)] text-[14px] font-bold flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
-              <button onClick={() => setErrorMsg(null)} className="text-red-500 font-bold px-1">
+              <button onClick={() => setErrorMsg(null)} className="font-bold px-2 min-h-[36px] cursor-pointer">
                 ✕
               </button>
             </div>
           )}
 
           {rows.length === 0 ? (
-            <div className="py-10 px-4 text-center space-y-3 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-              <FileSpreadsheet className="mx-auto h-12 w-12 text-teal-600/70 stroke-1" />
-              <div className="space-y-1">
-                <p className="text-sm font-extrabold text-slate-800">
+            <div className="py-10 px-4 text-center space-y-3 border-2 border-dashed border-[var(--border-strong)] rounded-2xl bg-[var(--bg-surface-subtle)]">
+              <FileSpreadsheet className="mx-auto h-12 w-12 text-[var(--brand-primary)] stroke-1" />
+              <div className="space-y-1.5">
+                <p className="text-[16px] font-bold text-[var(--text-primary)]">
                   ارفع ملف الإكسل لعرض المنتجات ومقارنة الأسعار قبل الحفظ
                 </p>
-                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                <p className="text-[14px] text-[var(--text-secondary)] max-w-md mx-auto leading-relaxed">
                   يدعم الأعمدة: <strong>اسم المنتج</strong>، <strong>الصنف</strong>، <strong>الباركود</strong>، <strong>الكمية</strong>، <strong>سعر الشراء</strong>، و<strong>سعر البيع</strong>. سيظهر لك كل منتج لاختيار بيعه بالسعر الجديد أو السعر القديم.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#1e4663] hover:bg-[#16354b] text-white px-5 py-2.5 text-xs sm:text-sm font-extrabold shadow-sm transition cursor-pointer"
+                className="app-btn-primary px-6"
               >
                 <Upload className="h-4 w-4" />
                 <span>اختيار ملف إكسل من الجهاز</span>
@@ -447,21 +447,21 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           ) : (
             <>
               {/* Global Pricing & Stock Mode Controls */}
-              <div className="bg-teal-50/70 border border-teal-200 rounded-2xl p-3 space-y-2.5">
+              <div className="bg-[var(--brand-soft)] border border-[var(--border-default)] rounded-2xl p-3.5 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                    <ArrowLeftRight className="h-4 w-4 text-teal-700" />
-                    <span>
+                  <div className="text-[14px] font-bold text-[var(--text-primary)] flex items-center gap-2">
+                    <ArrowLeftRight className="h-4 w-4 text-[var(--brand-primary)]" />
+                    <span className="app-num">
                       معاينة وتسعير المنتجات ({rows.length} منتج • {existingMatchCount} موجود سابقاً بالمخزن)
                     </span>
                   </div>
 
                   {/* Quick Bulk Price Switcher */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => applyBulkPriceChoice('new')}
-                      className="px-2.5 py-1 rounded-lg bg-[#0d9488] hover:bg-teal-700 text-white text-[11px] font-extrabold transition cursor-pointer"
+                      className="min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--color-success)] text-white text-[13px] font-bold transition cursor-pointer hover:opacity-90"
                     >
                       السعر الجديد للكل
                     </button>
@@ -469,7 +469,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       <button
                         type="button"
                         onClick={() => applyBulkPriceChoice('old')}
-                        className="px-2.5 py-1 rounded-lg bg-[#1e4663] hover:bg-[#16354b] text-white text-[11px] font-extrabold transition cursor-pointer"
+                        className="min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-hover)] text-white text-[13px] font-bold transition cursor-pointer"
                       >
                         السعر القديم للكل
                       </button>
@@ -478,16 +478,16 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 </div>
 
                 {/* Quantity Mode Switcher */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-teal-200/60 text-xs">
-                  <span className="font-bold text-slate-700">طريقة التعامل مع كمية المنتجات الموجودة:</span>
-                  <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-[var(--border-default)] text-[13px]">
+                  <span className="font-bold text-[var(--text-secondary)]">طريقة التعامل مع كمية المنتجات الموجودة:</span>
+                  <div className="flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border-default)]">
                     <button
                       type="button"
                       onClick={() => setQtyMode('add')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                      className={`px-3 min-h-[36px] rounded-lg text-[13px] font-bold transition cursor-pointer ${
                         qtyMode === 'add'
-                          ? 'bg-[#1e4663] text-white'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-[var(--brand-primary)] text-white'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       إضافة فوق الرصيد الحالي
@@ -495,10 +495,10 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setQtyMode('replace')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                      className={`px-3 min-h-[36px] rounded-lg text-[13px] font-bold transition cursor-pointer ${
                         qtyMode === 'replace'
-                          ? 'bg-[#1e4663] text-white'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-[var(--brand-primary)] text-white'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
                       استبدال الرصيد بالكمية الجديدة
@@ -508,7 +508,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               </div>
 
               {/* Product Cards List for Individual Price Selection */}
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {rows.map((row, idx) => {
                   const hasOld = row.oldSellPrice !== null;
                   const priceDiff =
@@ -519,28 +519,28 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                   return (
                     <div
                       key={row.id}
-                      className={`rounded-2xl border p-3 transition ${
+                      className={`rounded-2xl border p-3.5 transition ${
                         row.selected
-                          ? 'bg-white border-slate-200 shadow-2xs'
-                          : 'bg-slate-50/60 border-slate-200/60 opacity-60'
+                          ? 'bg-[var(--bg-surface)] border-[var(--border-default)] shadow-2xs'
+                          : 'bg-[var(--bg-surface-subtle)] border-[var(--border-default)] opacity-60'
                       }`}
                     >
-                      {/* Top Row: Checkbox + Name + Existing Status + Category */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+                      {/* Top Row */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[var(--border-default)]">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <button
                             type="button"
                             onClick={() => updateRowField(row.id, { selected: !row.selected })}
-                            className="text-[#1e4663] hover:opacity-80 shrink-0 cursor-pointer"
+                            className="text-[var(--brand-primary)] hover:opacity-80 shrink-0 cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
                           >
                             {row.selected ? (
-                              <CheckSquare className="h-5 w-5 text-[#0d9488]" />
+                              <CheckSquare className="h-5 w-5 text-[var(--color-success)]" />
                             ) : (
-                              <Square className="h-5 w-5 text-slate-400" />
+                              <Square className="h-5 w-5 text-[var(--text-muted)]" />
                             )}
                           </button>
 
-                          <span className="text-xs font-mono font-bold text-slate-400 shrink-0">
+                          <span className="text-[13px] app-num font-bold text-[var(--text-muted)] shrink-0">
                             #{idx + 1}
                           </span>
 
@@ -548,29 +548,29 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             type="text"
                             value={row.name}
                             onChange={(e) => updateRowField(row.id, { name: e.target.value })}
-                            className="font-extrabold text-slate-900 text-xs sm:text-sm bg-transparent border-b border-transparent focus:border-[#1e4663] focus:outline-hidden min-w-0 flex-1"
+                            className="font-bold text-[var(--text-primary)] text-[15px] bg-transparent border-b border-transparent focus:border-[var(--brand-primary)] focus:outline-hidden min-w-0 flex-1"
                           />
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           {hasOld ? (
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                            <span className="text-[12px] font-bold text-[var(--color-warning)] bg-[var(--color-warning-bg)] px-2.5 py-1 rounded-lg border border-[var(--color-warning-border)] app-num">
                               موجود بالمخزن (رصيد: {row.oldQty})
                             </span>
                           ) : (
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            <span className="text-[12px] font-bold text-[var(--color-success)] bg-[var(--color-success-bg)] px-2.5 py-1 rounded-lg border border-[var(--color-success-border)]">
                               منتج جديد
                             </span>
                           )}
 
-                          <div className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-0.5">
-                            <Tag className="h-3 w-3 text-slate-500" />
+                          <div className="flex items-center gap-1 bg-[var(--bg-surface-subtle)] border border-[var(--border-default)] rounded-lg px-2.5 py-1">
+                            <Tag className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                             <input
                               type="text"
                               list={`cats_${row.id}`}
                               value={row.category}
                               onChange={(e) => updateRowField(row.id, { category: e.target.value })}
-                              className="text-[11px] font-bold text-slate-700 bg-transparent w-20 sm:w-24 focus:outline-hidden"
+                              className="text-[12px] font-bold text-[var(--text-primary)] bg-transparent w-24 focus:outline-hidden"
                               placeholder="الصنف"
                             />
                             <datalist id={`cats_${row.id}`}>
@@ -583,35 +583,33 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       </div>
 
                       {/* Middle Row: Old vs New Selling Price Choice Buttons */}
-                      <div className="pt-2.5 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
-                        {/* Left/Right Choice Buttons: New Price vs Old Price */}
+                      <div className="pt-3 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
                         <div className="sm:col-span-7 grid grid-cols-2 gap-2">
-                          {/* Option 1: New Sell Price from Excel */}
                           <button
                             type="button"
                             onClick={() => applyPriceChoiceToRow(row.id, 'new')}
-                            className={`p-2 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between ${
+                            className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between ${
                               row.priceChoice === 'new'
-                                ? 'border-[#0d9488] bg-teal-50/80 ring-1 ring-[#0d9488]'
-                                : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                ? 'border-[var(--color-success)] bg-[var(--color-success-bg)]'
+                                : 'border-[var(--border-default)] bg-[var(--bg-surface-subtle)] hover:bg-[var(--bg-hover)]'
                             }`}
                           >
                             <div className="flex items-center justify-between w-full">
-                              <span className="text-[10px] font-extrabold text-teal-800">
+                              <span className="text-[12px] font-bold text-[var(--color-success)]">
                                 السعر الجديد (إكسل)
                               </span>
                               {row.priceChoice === 'new' && (
-                                <Check className="h-3.5 w-3.5 text-[#0d9488]" />
+                                <Check className="h-4 w-4 text-[var(--color-success)]" />
                               )}
                             </div>
                             <div className="mt-1 flex items-baseline justify-between">
-                              <span className="font-mono font-black text-sm sm:text-base text-[#0d9488]">
+                              <span className="app-num font-extrabold text-[15px] text-[var(--color-success)]">
                                 {row.excelSellPrice.toFixed(0)} {currency}
                               </span>
                               {hasOld && priceDiff !== 0 && (
                                 <span
-                                  className={`text-[10px] font-mono font-bold ${
-                                    priceDiff > 0 ? 'text-amber-700' : 'text-blue-700'
+                                  className={`text-[12px] app-num font-bold ${
+                                    priceDiff > 0 ? 'text-[var(--color-warning)]' : 'text-[var(--brand-primary)]'
                                   }`}
                                 >
                                   {priceDiff > 0 ? `+${priceDiff.toFixed(0)}` : priceDiff.toFixed(0)}
@@ -620,34 +618,33 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             </div>
                           </button>
 
-                          {/* Option 2: Old Sell Price from Warehouse */}
                           <button
                             type="button"
                             disabled={!hasOld}
                             onClick={() => hasOld && applyPriceChoiceToRow(row.id, 'old')}
-                            className={`p-2 rounded-xl border text-right transition flex flex-col justify-between ${
+                            className={`p-2.5 rounded-xl border text-right transition flex flex-col justify-between ${
                               !hasOld
-                                ? 'border-slate-200/60 bg-slate-100/50 opacity-50 cursor-not-allowed'
+                                ? 'border-[var(--border-default)] bg-[var(--bg-surface-subtle)] opacity-50 cursor-not-allowed'
                                 : row.priceChoice === 'old'
-                                ? 'border-[#1e4663] bg-blue-50/70 ring-1 ring-[#1e4663] cursor-pointer'
-                                : 'border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer'
+                                ? 'border-[var(--brand-primary)] bg-[var(--brand-soft)] cursor-pointer'
+                                : 'border-[var(--border-default)] bg-[var(--bg-surface-subtle)] hover:bg-[var(--bg-hover)] cursor-pointer'
                             }`}
                           >
                             <div className="flex items-center justify-between w-full">
-                              <span className="text-[10px] font-extrabold text-slate-700">
+                              <span className="text-[12px] font-bold text-[var(--text-secondary)]">
                                 السعر القديم (بالمخزن)
                               </span>
                               {row.priceChoice === 'old' && (
-                                <Check className="h-3.5 w-3.5 text-[#1e4663]" />
+                                <Check className="h-4 w-4 text-[var(--brand-primary)]" />
                               )}
                             </div>
                             <div className="mt-1">
                               {hasOld && row.oldSellPrice !== null ? (
-                                <span className="font-mono font-black text-sm sm:text-base text-[#1e4663]">
+                                <span className="app-num font-extrabold text-[15px] text-[var(--brand-primary)]">
                                   {row.oldSellPrice.toFixed(0)} {currency}
                                 </span>
                               ) : (
-                                <span className="text-[11px] font-semibold text-slate-400">
+                                <span className="text-[12px] font-semibold text-[var(--text-muted)]">
                                   لا يوجد سعر قديم
                                 </span>
                               )}
@@ -657,8 +654,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
                         {/* Editable Final Sell Price, Buy Price & Qty */}
                         <div className="sm:col-span-5 grid grid-cols-3 gap-1.5">
-                          <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                            <label className="block text-[9px] font-bold text-slate-500">
+                          <div className="bg-[var(--bg-surface-subtle)] p-2 rounded-xl border border-[var(--border-default)]">
+                            <label className="block text-[11px] font-bold text-[var(--text-muted)]">
                               الكمية المضافة
                             </label>
                             <input
@@ -671,12 +668,12 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                   excelQty: Math.max(0, parseFloat(e.target.value) || 0),
                                 })
                               }
-                              className="w-full font-mono font-black text-xs text-slate-800 bg-transparent focus:outline-hidden text-center mt-0.5"
+                              className="w-full app-num font-extrabold text-[14px] text-[var(--text-primary)] bg-transparent focus:outline-hidden text-center mt-0.5"
                             />
                           </div>
 
-                          <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                            <label className="block text-[9px] font-bold text-slate-500">
+                          <div className="bg-[var(--bg-surface-subtle)] p-2 rounded-xl border border-[var(--border-default)]">
+                            <label className="block text-[11px] font-bold text-[var(--text-muted)]">
                               سعر الشراء
                             </label>
                             <input
@@ -689,12 +686,12 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                   finalBuyPrice: Math.max(0, parseFloat(e.target.value) || 0),
                                 })
                               }
-                              className="w-full font-mono font-bold text-xs text-slate-700 bg-transparent focus:outline-hidden text-center mt-0.5"
+                              className="w-full app-num font-bold text-[14px] text-[var(--text-secondary)] bg-transparent focus:outline-hidden text-center mt-0.5"
                             />
                           </div>
 
-                          <div className="bg-teal-50/50 p-1.5 rounded-xl border border-teal-300">
-                            <label className="block text-[9px] font-extrabold text-teal-800">
+                          <div className="bg-[var(--color-success-bg)] p-2 rounded-xl border border-[var(--color-success-border)]">
+                            <label className="block text-[11px] font-bold text-[var(--color-success)]">
                               سعر البيع المعتمد
                             </label>
                             <input
@@ -708,7 +705,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                   finalSellPrice: Math.max(0, parseFloat(e.target.value) || 0),
                                 })
                               }
-                              className="w-full font-mono font-black text-xs text-[#0d9488] bg-transparent focus:outline-hidden text-center mt-0.5"
+                              className="w-full app-num font-extrabold text-[14px] text-[var(--color-success)] bg-transparent focus:outline-hidden text-center mt-0.5"
                             />
                           </div>
                         </div>
@@ -722,11 +719,11 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+        <div className="px-4 py-3.5 bg-[var(--bg-surface-subtle)] border-t border-[var(--border-default)] flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-extrabold text-slate-700 transition cursor-pointer"
+            className="app-btn-secondary px-4"
           >
             إلغاء
           </button>
@@ -736,7 +733,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               type="button"
               disabled={isImporting}
               onClick={handleConfirmImport}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-[#1e4663] hover:bg-[#16354b] text-white px-5 py-2.5 text-xs sm:text-sm font-extrabold shadow-md transition active:scale-98 cursor-pointer disabled:opacity-50"
+              className="app-btn-primary flex-1 sm:flex-initial px-5"
             >
               <Check className="h-4 w-4" />
               <span>

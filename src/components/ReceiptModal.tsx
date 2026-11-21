@@ -1,9 +1,9 @@
 import React from 'react';
-import { X, Printer, Copy, Check, Store, FileDown } from 'lucide-react';
+import { X, Printer, Copy, Check, Store, FileDown, AlertTriangle } from 'lucide-react';
 import { Invoice, InvoiceItem } from '../types';
 import { DB } from '../services/db';
 import { BarcodeSvg } from './BarcodeSvg';
-import { exportInvoiceToPdf } from '../utils/pdfExport';
+import { exportInvoiceToPdf, PdfPaperSize } from '../utils/pdfExport';
 
 interface ReceiptModalProps {
   invoice: Invoice | null;
@@ -20,11 +20,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
+  const [paperSize, setPaperSize] = React.useState<PdfPaperSize>('thermal80');
+  const [pdfError, setPdfError] = React.useState<string | null>(null);
   const settings = DB.getSettings();
+
+  React.useEffect(() => {
+    setPdfError(null);
+  }, [invoice?.id, isOpen]);
 
   if (!isOpen || !invoice) return null;
 
   const isSale = invoice.type === 'sale' || invoice.type === 'sale_return' || invoice.type === 'quote';
+  const displayNumber = invoice.invoice_number || `#${invoice.id}`;
   const typeTitle =
     invoice.type === 'sale'
       ? 'فاتورة بيع'
@@ -42,8 +49,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   const handleExportPdf = async () => {
     setExportingPdf(true);
+    setPdfError(null);
     try {
-      await exportInvoiceToPdf(invoice, items, settings);
+      const res = await exportInvoiceToPdf(invoice, items, settings, {
+        paperSize,
+        shareTitle: `${typeTitle} ${displayNumber}`,
+        shareText: `${typeTitle} ${displayNumber} - ${settings.storeName || 'Cashier Pro'}`,
+      });
+      if (!res.success) {
+        setPdfError(res.error || 'تعذر تصدير الفاتورة بصيغة PDF');
+      }
+    } catch (err: any) {
+      setPdfError(err?.message || 'حدث خطأ غير متوقع أثناء تصدير PDF');
     } finally {
       setExportingPdf(false);
     }
@@ -52,7 +69,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const handleCopy = () => {
     const textLines = [
       `=== ${settings.storeName} ===`,
-      `${typeTitle} #${invoice.id}`,
+      `${typeTitle} ${displayNumber}`,
       `التاريخ: ${new Date(invoice.date).toLocaleString('ar-SA')}`,
       `الطرف: ${invoice.party_name || 'مفرد'}`,
       '--------------------------------',
@@ -70,6 +87,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const receiptSizeClass =
+    paperSize === 'thermal58'
+      ? 'receipt-58mm'
+      : paperSize === 'a4'
+      ? 'receipt-a4'
+      : 'receipt-80mm';
+
   return (
     <div
       onClick={onClose}
@@ -77,25 +101,47 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden m-auto"
+        className="relative w-full max-w-sm max-h-[88dvh] overflow-y-auto rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-default)] shadow-2xl m-auto"
       >
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3 print:hidden">
-          <div className="flex items-center gap-2">
-            <Printer className="h-5 w-5 text-teal-600" />
-            <h3 className="font-bold text-slate-800">إيصال الفاتورة #{invoice.id}</h3>
+        <div className="flex items-center justify-between border-b border-[var(--border-default)] bg-[var(--bg-surface-subtle)] px-4 py-3 print:hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <Printer className="h-5 w-5 text-[var(--brand-primary)] shrink-0" />
+            <h3 className="font-bold text-[var(--text-primary)] text-[15px] truncate">
+              إيصال الفاتورة <span className="app-num">{displayNumber}</span>
+            </h3>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <select
+              value={paperSize}
+              onChange={(e) => setPaperSize(e.target.value as PdfPaperSize)}
+              className="rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2.5 min-h-[38px] text-[12px] font-bold text-[var(--text-primary)]"
+              title="حجم الورق للطباعة و PDF"
+            >
+              <option value="thermal80">حراري 80mm</option>
+              <option value="thermal58">حراري 58mm</option>
+              <option value="a4">ورق A4</option>
+            </select>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl h-10 w-10 flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
+        {/* PDF Error Banner */}
+        {pdfError && (
+          <div className="mx-4 mt-3 p-3 rounded-xl bg-[var(--color-danger-bg)] border border-[var(--color-danger-border)] text-[var(--color-danger)] text-[13px] font-bold flex items-center gap-2 print:hidden">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{pdfError}</span>
+          </div>
+        )}
+
         {/* Printable Thermal Receipt Area */}
-        <div id="printable-receipt" className="p-6 bg-white text-slate-900 select-text">
+        <div id="printable-receipt" className={`p-6 bg-white text-slate-900 select-text ${receiptSizeClass}`}>
           {/* Store Info */}
           <div className="text-center pb-3 border-b border-dashed border-slate-300">
             <div className="flex justify-center mb-1">
@@ -112,7 +158,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <div className="py-2.5 border-b border-dashed border-slate-300 text-xs space-y-1">
             <div className="flex justify-between">
               <span className="text-slate-500">رقم الفاتورة:</span>
-              <span className="font-bold font-mono">#{invoice.id}</span>
+              <span className="font-bold font-mono">{displayNumber}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">نوع الفاتورة:</span>
@@ -196,11 +242,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         </div>
 
         {/* Action Buttons (Hidden in Print) */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-2 print:hidden">
+        <div className="p-4 border-t border-[var(--border-default)] bg-[var(--bg-surface-subtle)] flex flex-wrap gap-2 print:hidden">
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-2.5 px-3 text-xs sm:text-sm font-bold text-white hover:bg-teal-700 shadow-xs transition"
+            className="app-btn-primary flex-1 text-[14px]"
           >
             <Printer className="h-4 w-4" />
             طباعة
@@ -209,7 +255,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             type="button"
             onClick={handleExportPdf}
             disabled={exportingPdf}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-[#1e4663] py-2.5 px-3 text-xs sm:text-sm font-bold text-white hover:bg-[#16354b] shadow-xs transition disabled:opacity-60"
+            className="app-btn-primary flex-1 text-[14px]"
           >
             <FileDown className="h-4 w-4" />
             {exportingPdf ? 'جاري PDF...' : 'PDF'}
@@ -217,16 +263,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+            className="app-btn-secondary px-3.5 text-[14px]"
             title="نسخ النص"
           >
-            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            {copied ? <Check className="h-4 w-4 text-[var(--color-success)]" /> : <Copy className="h-4 w-4" />}
             {copied ? 'تم' : 'نسخ'}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center justify-center rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-100 transition"
+            className="app-btn-secondary px-3.5 text-[14px]"
           >
             رجوع
           </button>
