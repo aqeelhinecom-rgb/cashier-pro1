@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>جاري العودة للتطبيق...</title>
+</head>
+<body style="background:#0f172a;color:#fff;font-family:sans-serif;text-align:center;padding-top:20vh;">
+  <p>تم تسجيل الدخول بنجاح، جاري العودة إلى تطبيق Cashier Pro...</p>
+  <a id="btn" href="cashierpro://oauth" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#10b981;color:#fff;text-decoration:none;border-radius:8px;">العودة للتطبيق</a>
+  <script>
+    (function() {
+      var hash = window.location.hash || '';
+      var target = 'cashierpro://oauth' + hash;
+      document.getElementById('btn').href = target;
+      try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+      window.location.replace(target);
+    })();
+  </script>
+</body>
+</html>
